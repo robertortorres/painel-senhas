@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Totem de Senhas</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{background:#0f172a;color:#fff;font-family:'Segoe UI',sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden;touch-action:manipulation}
+
+  #header{background:#1e293b;padding:20px 24px;border-bottom:1px solid #334155;text-align:center}
+  #header h1{font-size:1.6rem;font-weight:700;color:#f1f5f9}
+  #header p{font-size:.9rem;color:#64748b;margin-top:4px}
+
+  #tela{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;gap:28px}
+
+  /* TELA INICIAL */
+  #tela-setores{width:100%;max-width:500px}
+  .titulo-tela{text-align:center;font-size:1.4rem;color:#94a3b8;margin-bottom:24px}
+  .grid-setores{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .btn-setor{background:#1e3a5f;border:2px solid #2563eb;border-radius:16px;padding:28px 16px;text-align:center;cursor:pointer;transition:all .15s;user-select:none}
+  .btn-setor:active{transform:scale(.95);background:#1e40af}
+  .btn-setor .prefixo{font-size:2.2rem;font-weight:900;color:#60a5fa}
+  .btn-setor .nome{font-size:1rem;color:#94a3b8;margin-top:6px}
+
+  /* TELA TIPO */
+  #tela-tipo{width:100%;max-width:500px;display:none;flex-direction:column;gap:16px}
+  .btn-tipo{border:2px solid;border-radius:16px;padding:32px;text-align:center;cursor:pointer;transition:all .15s;user-select:none}
+  .btn-tipo:active{transform:scale(.95)}
+  .btn-tipo.normal{border-color:#22c55e;background:#052e16}
+  .btn-tipo.normal .icone{font-size:3rem;color:#4ade80}
+  .btn-tipo.normal .label{color:#4ade80;font-size:1.2rem;margin-top:8px}
+  .btn-tipo.prioritario{border-color:#f59e0b;background:#1c1007}
+  .btn-tipo.prioritario .icone{font-size:3rem;color:#fbbf24}
+  .btn-tipo.prioritario .label{color:#fbbf24;font-size:1.2rem;margin-top:8px}
+  .btn-tipo .desc{font-size:.85rem;color:#64748b;margin-top:4px}
+  #btn-voltar{background:none;border:1px solid #334155;color:#64748b;padding:12px;border-radius:10px;cursor:pointer;font-size:.9rem;margin-top:8px}
+
+  /* TELA AGUARDE */
+  #tela-aguarde{display:none;flex-direction:column;align-items:center;gap:20px}
+  .spinner{width:60px;height:60px;border:4px solid #1e3a5f;border-top-color:#3b82f6;border-radius:50%;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* TELA SUCESSO */
+  #tela-sucesso{display:none;flex-direction:column;align-items:center;gap:16px;text-align:center}
+  .senha-big{font-size:6rem;font-weight:900;color:#fff;line-height:1}
+  .senha-big.prioritario{color:#fbbf24}
+  .senha-setor{font-size:1.2rem;color:#94a3b8}
+  .senha-posicao{background:#1e3a5f;padding:10px 24px;border-radius:50px;color:#93c5fd;font-size:1rem}
+  .btn-print{background:#2563eb;color:#fff;border:none;padding:16px 40px;border-radius:12px;font-size:1.1rem;cursor:pointer;margin-top:8px}
+  .btn-print:active{opacity:.8}
+  .btn-nova{background:#1e293b;color:#94a3b8;border:1px solid #334155;padding:12px 32px;border-radius:10px;font-size:1rem;cursor:pointer}
+
+  /* TELA ERRO */
+  #tela-erro{display:none;flex-direction:column;align-items:center;gap:16px;text-align:center}
+  .erro-txt{color:#f87171;font-size:1.1rem}
+
+  /* STATUS BLE */
+  #ble-status{position:absolute;top:12px;right:12px;font-size:.75rem;padding:4px 10px;border-radius:50px;background:#1e293b;color:#475569;border:1px solid #334155}
+  #ble-status.conectado{color:#4ade80;border-color:#166534}
+
+  @keyframes fadeIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+  .fade{animation:fadeIn .3s ease}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1 id="clinica-nome">Clínica</h1>
+  <p>Retire sua senha</p>
+</div>
+<div id="ble-status">BLE</div>
+
+<div id="tela">
+
+  <!-- SETORES -->
+  <div id="tela-setores" class="fade">
+    <div class="titulo-tela">Selecione o atendimento</div>
+    <div class="grid-setores" id="grid-setores"></div>
+  </div>
+
+  <!-- TIPO -->
+  <div id="tela-tipo" class="fade">
+    <div class="titulo-tela">Tipo de atendimento</div>
+    <div class="btn-tipo normal" onclick="gerarSenha('normal')">
+      <div class="icone">◯</div>
+      <div class="label">Normal</div>
+      <div class="desc">Atendimento na ordem de chegada</div>
+    </div>
+    <div class="btn-tipo prioritario" onclick="gerarSenha('prioritario')">
+      <div class="icone">★</div>
+      <div class="label">Prioritário</div>
+      <div class="desc">Idoso, gestante, deficiência</div>
+    </div>
+    <button id="btn-voltar" onclick="voltarSetores()">← Voltar</button>
+  </div>
+
+  <!-- AGUARDE -->
+  <div id="tela-aguarde" class="fade">
+    <div class="spinner"></div>
+    <div style="color:#64748b">Gerando sua senha...</div>
+  </div>
+
+  <!-- SUCESSO -->
+  <div id="tela-sucesso" class="fade">
+    <div style="color:#94a3b8;font-size:1rem">Sua senha</div>
+    <div class="senha-big" id="suc-codigo"></div>
+    <div class="senha-setor" id="suc-setor"></div>
+    <div class="senha-posicao" id="suc-posicao"></div>
+    <button class="btn-print" onclick="imprimirBLE()">Imprimir comprovante</button>
+    <button class="btn-nova" onclick="reiniciar()">Nova senha</button>
+  </div>
+
+  <!-- ERRO -->
+  <div id="tela-erro" class="fade">
+    <div style="font-size:2.5rem">⚠</div>
+    <div class="erro-txt" id="erro-txt">Erro ao gerar senha</div>
+    <button class="btn-nova" onclick="reiniciar()">Tentar novamente</button>
+  </div>
+
+</div>
+
+<script>
+const API_URL    = (window.__ENV__?.API_URL || 'http://localhost:3001');
+const UNIDADE_ID = parseInt(new URLSearchParams(location.search).get('unidade') || 1);
+let setorSelecionado = null;
+let ultimaSenha      = null;
+let bleDevice        = null;
+let bleChar          = null;
+const bleStatus      = document.getElementById('ble-status');
+
+// Carregar setores
+async function carregarSetores() {
+  try {
+    const r = await fetch(`${API_URL}/api/setores?unidade_id=${UNIDADE_ID}`);
+    const setores = await r.json();
+    const grid = document.getElementById('grid-setores');
+    grid.innerHTML = setores.map(s => `
+      <div class="btn-setor" onclick="selecionarSetor(${s.id},'${s.nome}','${s.prefixo}')">
+        <div class="prefixo">${s.prefixo}</div>
+        <div class="nome">${s.nome}</div>
+      </div>`).join('');
+    document.getElementById('clinica-nome').textContent = 'Clínica — Unidade';
+  } catch(e) {
+    mostrarErro('Erro ao carregar setores. Verifique a conexão.');
+  }
+}
+
+function selecionarSetor(id, nome, prefixo) {
+  setorSelecionado = { id, nome, prefixo };
+  mostrarTela('tela-tipo');
+}
+function voltarSetores() { mostrarTela('tela-setores'); }
+
+async function gerarSenha(tipo) {
+  mostrarTela('tela-aguarde');
+  try {
+    const r = await fetch(`${API_URL}/api/senhas`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ unidade_id: UNIDADE_ID, setor_id: setorSelecionado.id, tipo })
+    });
+    if (!r.ok) throw new Error('Erro ' + r.status);
+    const { senha, escpos } = await r.json();
+    ultimaSenha = { senha, escpos };
+
+    document.getElementById('suc-codigo').textContent = senha.codigo;
+    document.getElementById('suc-codigo').className   = 'senha-big' + (tipo==='prioritario'?' prioritario':'');
+    document.getElementById('suc-setor').textContent  = senha.setor_nome;
+    document.getElementById('suc-posicao').textContent = `Você é o ${senha.posicao}º na fila`;
+    mostrarTela('tela-sucesso');
+
+    // Tentar imprimir automaticamente se já tiver dispositivo pareado
+    if (bleDevice && bleChar) imprimirBLE();
+  } catch(e) {
+    mostrarErro(e.message);
+  }
+}
+
+// Web Bluetooth API — impressão ESC/POS via BLE
+async function imprimirBLE() {
+  if (!navigator.bluetooth) {
+    alert('Web Bluetooth não disponível. Use Chrome no Android.');
+    return;
+  }
+  try {
+    bleStatus.textContent = 'Conectando...';
+    bleStatus.className   = '';
+
+    // Tentar reconectar ao dispositivo já pareado
+    if (!bleDevice || !bleDevice.gatt.connected) {
+      bleDevice = await navigator.bluetooth.requestDevice({
+        filters: [
+          { services: [0xFF00] },
+          { services: [0x18F0] },
+          { namePrefix: 'Printer' },
+          { namePrefix: 'RPP' },
+          { namePrefix: 'MTP' },
+          { namePrefix: 'Elgin' },
+          { namePrefix: 'Bema' },
+        ],
+        optionalServices: [0xFF00, 0x18F0, '000018f0-0000-1000-8000-00805f9b34fb']
+      });
+    }
+
+    const server  = await bleDevice.gatt.connect();
+
+    // Tentar diferentes UUIDs de serviço
+    let service;
+    for (const uuid of [0xFF00, 0x18F0, '000018f0-0000-1000-8000-00805f9b34fb']) {
+      try { service = await server.getPrimaryService(uuid); break; } catch {}
+    }
+    if (!service) throw new Error('Serviço de impressão não encontrado.');
+
+    // Tentar diferentes UUIDs de characterística
+    let char;
+    for (const uuid of [0xFF02, 0x2AF1, '00002af1-0000-1000-8000-00805f9b34fb']) {
+      try { char = await service.getCharacteristic(uuid); break; } catch {}
+    }
+    if (!char) throw new Error('Characterística de escrita não encontrada.');
+    bleChar = char;
+
+    // Enviar payload ESC/POS em chunks de 20 bytes (limite BLE)
+    const data = new Uint8Array(ultimaSenha.escpos);
+    const CHUNK = 20;
+    for (let i = 0; i < data.length; i += CHUNK) {
+      await char.writeValueWithoutResponse(data.slice(i, i + CHUNK));
+      await new Promise(r => setTimeout(r, 30));
+    }
+
+    bleStatus.textContent = 'Impressora OK';
+    bleStatus.className   = 'conectado';
+  } catch(e) {
+    bleStatus.textContent = 'BLE erro';
+    if (e.name !== 'NotFoundError') alert('Erro na impressão: ' + e.message);
+  }
+}
+
+function mostrarTela(id) {
+  ['tela-setores','tela-tipo','tela-aguarde','tela-sucesso','tela-erro'].forEach(t => {
+    const el = document.getElementById(t);
+    el.style.display = 'none';
+    el.classList.remove('fade');
+  });
+  const el = document.getElementById(id);
+  el.style.display = id === 'tela-setores' ? 'block' :
+                     id === 'tela-tipo'    ? 'flex'  :
+                     'flex';
+  void el.offsetWidth;
+  el.classList.add('fade');
+}
+
+function mostrarErro(msg) {
+  document.getElementById('erro-txt').textContent = msg;
+  mostrarTela('tela-erro');
+}
+
+function reiniciar() {
+  setorSelecionado = null;
+  ultimaSenha = null;
+  mostrarTela('tela-setores');
+}
+
+// Auto-retorno para tela inicial após 20s na tela de sucesso
+let autoReset;
+document.getElementById('tela-sucesso').addEventListener('transitionend', () => {
+  clearTimeout(autoReset);
+  autoReset = setTimeout(reiniciar, 20000);
+});
+
+carregarSetores();
+</script>
+</body>
+</html>

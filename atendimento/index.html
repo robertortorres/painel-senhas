@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Atendimento — SGA</title>
+<script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#f1f5f9;font-family:'Segoe UI',sans-serif;min-height:100vh}
+#app{display:flex;flex-direction:column;min-height:100vh}
+
+/* NAV */
+nav{background:#1e40af;color:#fff;padding:0 24px;display:flex;align-items:center;gap:16px;height:56px;flex-shrink:0}
+nav h1{font-size:1.1rem;font-weight:700;flex:1}
+nav .nav-item{padding:6px 14px;border-radius:6px;cursor:pointer;font-size:.9rem;opacity:.75;transition:.15s}
+nav .nav-item:hover{opacity:1;background:rgba(255,255,255,.15)}
+nav .nav-item.ativo{opacity:1;background:rgba(255,255,255,.2)}
+.badge{background:#ef4444;color:#fff;border-radius:50px;padding:1px 7px;font-size:.75rem;margin-left:4px}
+
+/* LOGIN */
+#login-wrap{flex:1;display:flex;align-items:center;justify-content:center}
+.login-card{background:#fff;border-radius:16px;padding:40px;width:100%;max-width:360px;box-shadow:0 4px 24px rgba(0,0,0,.08)}
+.login-card h2{text-align:center;margin-bottom:24px;color:#1e293b}
+.campo{margin-bottom:16px}
+.campo label{display:block;font-size:.85rem;color:#64748b;margin-bottom:4px}
+.campo input{width:100%;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px;font-size:1rem;outline:none;transition:.15s}
+.campo input:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.1)}
+.btn-primario{width:100%;background:#2563eb;color:#fff;border:none;padding:12px;border-radius:8px;font-size:1rem;cursor:pointer;font-weight:600;transition:.15s}
+.btn-primario:hover{background:#1d4ed8}
+.erro-login{color:#ef4444;font-size:.85rem;text-align:center;margin-top:8px}
+
+/* CONTEÚDO */
+#conteudo{flex:1;padding:24px;max-width:1200px;width:100%;margin:0 auto}
+
+/* PAINEL ATENDIMENTO */
+.painel-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+.card{background:#fff;border-radius:12px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.card h3{font-size:.85rem;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px}
+.numero-grande{font-size:4rem;font-weight:900;color:#1e293b;line-height:1}
+.numero-grande.vazio{color:#cbd5e1;font-size:2rem}
+.tag{display:inline-block;padding:3px 10px;border-radius:50px;font-size:.75rem;font-weight:600}
+.tag.aguardando{background:#dbeafe;color:#1e40af}
+.tag.chamada{background:#fef9c3;color:#854d0e}
+.tag.atendimento{background:#dcfce7;color:#166534}
+.tag.prioritario{background:#fef3c7;color:#92400e}
+
+.btn{padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:.9rem;font-weight:500;transition:.15s}
+.btn:active{opacity:.8}
+.btn-verde{background:#22c55e;color:#fff}
+.btn-azul{background:#3b82f6;color:#fff}
+.btn-cinza{background:#e2e8f0;color:#475569}
+.btn-vermelho{background:#ef4444;color:#fff}
+.btn-amarelo{background:#f59e0b;color:#fff}
+
+.select-local{padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:.9rem;outline:none;cursor:pointer}
+
+/* FILA */
+.fila-lista{display:flex;flex-direction:column;gap:8px}
+.fila-item{background:#fff;border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 3px rgba(0,0,0,.05);border-left:4px solid transparent}
+.fila-item.aguardando{border-left-color:#3b82f6}
+.fila-item.chamada{border-left-color:#f59e0b}
+.fila-item.atendimento{border-left-color:#22c55e}
+.fila-item .codigo{font-size:1.4rem;font-weight:900;min-width:72px;color:#1e293b}
+.fila-item .info{flex:1}
+.fila-item .info .setor{font-size:.9rem;color:#64748b}
+.fila-item .info .tempo{font-size:.8rem;color:#94a3b8}
+.fila-item .acoes{display:flex;gap:6px}
+
+/* ABAS */
+.abas{display:flex;gap:4px;margin-bottom:16px;background:#e2e8f0;padding:4px;border-radius:10px;width:fit-content}
+.aba{padding:6px 18px;border-radius:7px;cursor:pointer;font-size:.9rem;color:#64748b;transition:.15s}
+.aba.ativa{background:#fff;color:#1e293b;font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+
+/* ADMIN */
+.tabela{width:100%;border-collapse:collapse}
+.tabela th{text-align:left;padding:10px 12px;font-size:.8rem;color:#64748b;border-bottom:2px solid #e2e8f0;text-transform:uppercase;letter-spacing:.5px}
+.tabela td{padding:10px 12px;border-bottom:1px solid #f1f5f9;font-size:.9rem}
+.tabela tr:hover td{background:#f8fafc}
+.form-linha{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px}
+.form-grupo{display:flex;flex-direction:column;gap:4px}
+.form-grupo label{font-size:.8rem;color:#64748b}
+.form-grupo input,.form-grupo select{padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:.9rem;outline:none}
+.form-grupo input:focus,.form-grupo select:focus{border-color:#3b82f6}
+
+@media(max-width:640px){.painel-grid{grid-template-columns:1fr}.form-linha{flex-direction:column}}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- LOGIN -->
+  <div id="login-wrap" v-if="!usuario">
+    <div class="login-card">
+      <h2>SGA — Atendimento</h2>
+      <div class="campo">
+        <label>Login</label>
+        <input v-model="loginForm.login" type="text" placeholder="seu.login" @keyup.enter="fazerLogin">
+      </div>
+      <div class="campo">
+        <label>Senha</label>
+        <input v-model="loginForm.senha" type="password" placeholder="••••••••" @keyup.enter="fazerLogin">
+      </div>
+      <button class="btn-primario" @click="fazerLogin" :disabled="loginForm.carregando">
+        {{ loginForm.carregando ? 'Entrando...' : 'Entrar' }}
+      </button>
+      <div class="erro-login" v-if="loginForm.erro">{{ loginForm.erro }}</div>
+    </div>
+  </div>
+
+  <!-- APP PRINCIPAL -->
+  <template v-if="usuario">
+    <nav>
+      <h1>SGA</h1>
+      <span
+        v-if="podeAtender"
+        class="nav-item" :class="{ativo: aba==='atendimento'}"
+        @click="aba='atendimento'">
+        Atendimento
+        <span class="badge" v-if="qtdAguardando > 0">{{ qtdAguardando }}</span>
+      </span>
+      <span
+        v-if="podeAdmin"
+        class="nav-item" :class="{ativo: aba==='admin'}"
+        @click="aba='admin';carregarAdmin()">
+        Administrativo
+      </span>
+      <span style="font-size:.85rem;opacity:.7">{{ usuario.nome }}</span>
+      <span class="nav-item" @click="sair">Sair</span>
+    </nav>
+
+    <div id="conteudo">
+
+      <!-- ABA ATENDIMENTO -->
+      <div v-if="aba==='atendimento'">
+        <div class="painel-grid">
+          <!-- Card senha atual -->
+          <div class="card">
+            <h3>Chamando agora</h3>
+            <div v-if="senhaAtual">
+              <div class="numero-grande" :style="senhaAtual.tipo==='prioritario'?'color:#f59e0b':''">
+                {{ senhaAtual.codigo }}
+              </div>
+              <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <span class="tag" :class="senhaAtual.status">{{ senhaAtual.status }}</span>
+                <span class="tag prioritario" v-if="senhaAtual.tipo==='prioritario'">Prioritário</span>
+                <span style="font-size:.9rem;color:#64748b">{{ senhaAtual.setor_nome }}</span>
+              </div>
+              <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-amarelo" @click="chamarNovamente" title="Chamar novamente">↻ Rechamar</button>
+                <button class="btn btn-verde" @click="iniciarAtendimento" v-if="senhaAtual.status==='chamada'">Iniciar</button>
+                <button class="btn btn-azul" @click="concluirAtendimento" v-if="senhaAtual.status==='atendimento'">Concluir</button>
+              </div>
+            </div>
+            <div class="numero-grande vazio" v-else>—</div>
+          </div>
+
+          <!-- Card próxima -->
+          <div class="card">
+            <h3>Chamar próxima</h3>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div class="form-grupo">
+                <label>Local de atendimento</label>
+                <select class="select-local" v-model="localSelecionado">
+                  <option value="">Selecione...</option>
+                  <option v-for="l in locais" :key="l.id" :value="l.id">{{ l.nome }}</option>
+                </select>
+              </div>
+              <button class="btn btn-verde" style="padding:12px" @click="chamarProxima" :disabled="!localSelecionado || fila.filter(s=>s.status==='aguardando').length===0">
+                Chamar próxima senha
+              </button>
+              <div style="font-size:.85rem;color:#64748b">
+                {{ fila.filter(s=>s.status==='aguardando').length }} aguardando
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Fila -->
+        <div class="abas">
+          <div class="aba" :class="{ativa:abaFila==='aguardando'}" @click="abaFila='aguardando'">
+            Aguardando <span class="badge">{{ fila.filter(s=>s.status==='aguardando').length }}</span>
+          </div>
+          <div class="aba" :class="{ativa:abaFila==='chamada'}" @click="abaFila='chamada'">Chamados</div>
+          <div class="aba" :class="{ativa:abaFila==='atendimento'}" @click="abaFila='atendimento'">Em atendimento</div>
+        </div>
+
+        <div class="fila-lista">
+          <div class="fila-item" :class="s.status" v-for="s in filtraFila" :key="s.id">
+            <div class="codigo" :style="s.tipo==='prioritario'?'color:#f59e0b':''">{{ s.codigo }}</div>
+            <div class="info">
+              <div>{{ s.setor_nome }}</div>
+              <div class="setor">{{ s.local_nome || '—' }}</div>
+              <div class="tempo">{{ formatarTempo(s.criado_em) }}</div>
+            </div>
+            <div class="acoes">
+              <button class="btn btn-azul" @click="chamarSenha(s)" v-if="s.status==='aguardando'">Chamar</button>
+              <button class="btn btn-vermelho" @click="cancelarSenha(s)" title="Cancelar">✕</button>
+            </div>
+          </div>
+          <div v-if="!filtraFila.length" style="text-align:center;color:#94a3b8;padding:32px">Nenhuma senha nesta categoria</div>
+        </div>
+      </div>
+
+      <!-- ABA ADMIN -->
+      <div v-if="aba==='admin'">
+        <div class="abas">
+          <div class="aba" :class="{ativa:abaAdmin==='setores'}" @click="abaAdmin='setores'">Setores</div>
+          <div class="aba" :class="{ativa:abaAdmin==='locais'}" @click="abaAdmin='locais'">Locais</div>
+          <div class="aba" :class="{ativa:abaAdmin==='usuarios'}" @click="abaAdmin='usuarios'">Usuários</div>
+        </div>
+
+        <!-- SETORES -->
+        <div v-if="abaAdmin==='setores'">
+          <div class="form-linha">
+            <div class="form-grupo"><label>Nome</label><input v-model="novoSetor.nome" placeholder="Ex: Financeiro"></div>
+            <div class="form-grupo"><label>Prefixo</label><input v-model="novoSetor.prefixo" placeholder="Ex: FI" maxlength="5" style="width:80px"></div>
+            <div class="form-grupo"><label>Ordem</label><input v-model.number="novoSetor.ordem" type="number" style="width:80px"></div>
+            <button class="btn btn-azul" @click="salvarSetor">Adicionar</button>
+          </div>
+          <table class="tabela">
+            <thead><tr><th>ID</th><th>Nome</th><th>Prefixo</th><th>Ordem</th><th>Ativo</th><th></th></tr></thead>
+            <tbody>
+              <tr v-for="s in admin.setores" :key="s.id">
+                <td>{{ s.id }}</td><td>{{ s.nome }}</td><td>{{ s.prefixo }}</td><td>{{ s.ordem }}</td>
+                <td><span :style="s.ativo?'color:#22c55e':'color:#94a3b8'">{{ s.ativo ? 'Sim' : 'Não' }}</span></td>
+                <td><button class="btn btn-vermelho" @click="deletarSetor(s.id)">Remover</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- LOCAIS -->
+        <div v-if="abaAdmin==='locais'">
+          <div class="form-linha">
+            <div class="form-grupo"><label>Nome</label><input v-model="novoLocal.nome" placeholder="Ex: Guichê 01"></div>
+            <button class="btn btn-azul" @click="salvarLocal">Adicionar</button>
+          </div>
+          <table class="tabela">
+            <thead><tr><th>ID</th><th>Nome</th><th>Ativo</th><th></th></tr></thead>
+            <tbody>
+              <tr v-for="l in admin.locais" :key="l.id">
+                <td>{{ l.id }}</td><td>{{ l.nome }}</td>
+                <td><span :style="l.ativo?'color:#22c55e':'color:#94a3b8'">{{ l.ativo ? 'Sim' : 'Não' }}</span></td>
+                <td><button class="btn btn-vermelho" @click="deletarLocal(l.id)">Remover</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- USUÁRIOS -->
+        <div v-if="abaAdmin==='usuarios'">
+          <div class="form-linha">
+            <div class="form-grupo"><label>Nome</label><input v-model="novoUsuario.nome" placeholder="Nome completo"></div>
+            <div class="form-grupo"><label>Login</label><input v-model="novoUsuario.login" placeholder="login"></div>
+            <div class="form-grupo"><label>Senha</label><input v-model="novoUsuario.senha" type="password" placeholder="••••••••"></div>
+            <div class="form-grupo">
+              <label>Perfil</label>
+              <select v-model="novoUsuario.perfil">
+                <option value="admin_unidade">Admin unidade</option>
+                <option value="atendente">Atendente</option>
+                <option value="medico">Médico</option>
+                <option value="triagem">Triagem</option>
+                <option value="relatorios">Relatórios</option>
+              </select>
+            </div>
+            <button class="btn btn-azul" @click="salvarUsuario">Adicionar</button>
+          </div>
+          <table class="tabela">
+            <thead><tr><th>Nome</th><th>Login</th><th>Perfil</th><th>Ativo</th></tr></thead>
+            <tbody>
+              <tr v-for="u in admin.usuarios" :key="u.id">
+                <td>{{ u.nome }}</td><td>{{ u.login }}</td><td>{{ u.perfil }}</td>
+                <td><span :style="u.ativo?'color:#22c55e':'color:#94a3b8'">{{ u.ativo ? 'Sim' : 'Não' }}</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </template>
+</div>
+
+<script>
+const { createApp } = Vue;
+const API_URL = (window.__ENV__?.API_URL || window.location.origin.replace(/:\d+/,'') + ':3001');
+
+createApp({
+  data() {
+    return {
+      usuario: null, token: null,
+      loginForm: { login: '', senha: '', carregando: false, erro: '' },
+      aba: 'atendimento', abaFila: 'aguardando', abaAdmin: 'setores',
+      fila: [], locais: [], senhaAtual: null, localSelecionado: '',
+      socket: null,
+      admin: { setores: [], locais: [], usuarios: [] },
+      novoSetor: { nome: '', prefixo: '', ordem: 0 },
+      novoLocal: { nome: '' },
+      novoUsuario: { nome: '', login: '', senha: '', perfil: 'atendente' },
+    };
+  },
+  computed: {
+    qtdAguardando() { return this.fila.filter(s => s.status === 'aguardando').length; },
+    podeAtender()   { return ['atendente','medico','admin_unidade','admin_global'].includes(this.usuario?.perfil); },
+    podeAdmin()     { return ['admin_unidade','admin_global'].includes(this.usuario?.perfil); },
+    filtraFila()    { return this.fila.filter(s => s.status === this.abaFila); },
+  },
+  methods: {
+    async api(path, opts={}) {
+      const r = await fetch(API_URL + path, {
+        ...opts,
+        headers: { 'Content-Type':'application/json', 'Authorization': 'Bearer '+this.token, ...opts.headers }
+      });
+      if (!r.ok) throw await r.json();
+      return r.json();
+    },
+    async fazerLogin() {
+      this.loginForm.carregando = true; this.loginForm.erro = '';
+      try {
+        const d = await this.api('/api/auth/login', { method:'POST', body: JSON.stringify(this.loginForm), headers:{} });
+        this.token   = d.token;
+        this.usuario = d.usuario;
+        localStorage.setItem('sga_token', d.token);
+        localStorage.setItem('sga_usuario', JSON.stringify(d.usuario));
+        this.iniciar();
+      } catch(e) {
+        this.loginForm.erro = e.erro || 'Erro ao fazer login';
+      } finally { this.loginForm.carregando = false; }
+    },
+    iniciar() {
+      this.carregarFila();
+      this.carregarLocais();
+      this.conectarSocket();
+    },
+    async carregarFila() {
+      this.fila = await this.api(`/api/senhas/fila?unidade_id=${this.usuario.unidade_id}`);
+    },
+    async carregarLocais() {
+      this.locais = await this.api(`/api/locais?unidade_id=${this.usuario.unidade_id}`);
+    },
+    conectarSocket() {
+      this.socket = io(API_URL);
+      this.socket.emit('join:unidade', { unidade_id: this.usuario.unidade_id });
+      this.socket.on('senha:criada',   () => this.carregarFila());
+      this.socket.on('fila:atualizada',() => this.carregarFila());
+    },
+    async chamarProxima() {
+      const prox = this.fila.find(s => s.status === 'aguardando');
+      if (!prox) return;
+      await this.chamarSenha(prox);
+    },
+    async chamarSenha(s) {
+      if (!this.localSelecionado) return alert('Selecione o local de atendimento');
+      const local = this.locais.find(l => l.id == this.localSelecionado);
+      await this.api(`/api/senhas/${s.id}/chamar`, {
+        method:'POST', body: JSON.stringify({ local_id: this.localSelecionado, unidade_id: this.usuario.unidade_id, local_nome: local?.nome })
+      });
+      this.senhaAtual = { ...s, status:'chamada', local_id: this.localSelecionado, local_nome: local?.nome };
+      this.carregarFila();
+    },
+    async chamarNovamente() {
+      if (!this.senhaAtual) return;
+      await this.api(`/api/senhas/${this.senhaAtual.id}/chamar`, {
+        method:'POST', body: JSON.stringify({ local_id: this.localSelecionado, unidade_id: this.usuario.unidade_id })
+      });
+    },
+    async iniciarAtendimento() {
+      await this.api(`/api/senhas/${this.senhaAtual.id}/atender`, {
+        method:'POST', body: JSON.stringify({ unidade_id: this.usuario.unidade_id })
+      });
+      this.senhaAtual.status = 'atendimento';
+    },
+    async concluirAtendimento() {
+      await this.api(`/api/senhas/${this.senhaAtual.id}/concluir`, {
+        method:'POST', body: JSON.stringify({ unidade_id: this.usuario.unidade_id })
+      });
+      this.senhaAtual = null;
+      this.carregarFila();
+    },
+    async cancelarSenha(s) {
+      if (!confirm(`Cancelar senha ${s.codigo}?`)) return;
+      await this.api(`/api/senhas/${s.id}/cancelar`, {
+        method:'POST', body: JSON.stringify({ unidade_id: this.usuario.unidade_id })
+      });
+      this.carregarFila();
+    },
+    formatarTempo(dt) {
+      const diff = Math.floor((Date.now() - new Date(dt)) / 60000);
+      return diff < 1 ? 'agora' : diff < 60 ? `${diff} min` : `${Math.floor(diff/60)}h ${diff%60}min`;
+    },
+    sair() {
+      localStorage.removeItem('sga_token'); localStorage.removeItem('sga_usuario');
+      this.usuario = null; this.token = null;
+      if (this.socket) this.socket.disconnect();
+    },
+    async carregarAdmin() {
+      const uid = this.usuario.unidade_id;
+      [this.admin.setores, this.admin.locais, this.admin.usuarios] = await Promise.all([
+        this.api(`/api/setores?unidade_id=${uid}`),
+        this.api(`/api/locais?unidade_id=${uid}`),
+        this.api(`/api/usuarios?unidade_id=${uid}`),
+      ]);
+    },
+    async salvarSetor() {
+      await this.api('/api/setores', { method:'POST', body: JSON.stringify({ ...this.novoSetor, unidade_id: this.usuario.unidade_id }) });
+      this.novoSetor = { nome:'', prefixo:'', ordem:0 };
+      this.carregarAdmin();
+    },
+    async deletarSetor(id) {
+      await this.api(`/api/setores/${id}`, { method:'DELETE' });
+      this.carregarAdmin();
+    },
+    async salvarLocal() {
+      await this.api('/api/locais', { method:'POST', body: JSON.stringify({ ...this.novoLocal, unidade_id: this.usuario.unidade_id }) });
+      this.novoLocal = { nome:'' };
+      this.carregarAdmin();
+    },
+    async deletarLocal(id) {
+      await this.api(`/api/locais/${id}`, { method:'DELETE' });
+      this.carregarAdmin();
+    },
+    async salvarUsuario() {
+      await this.api('/api/usuarios', { method:'POST', body: JSON.stringify({ ...this.novoUsuario, unidade_id: this.usuario.unidade_id }) });
+      this.novoUsuario = { nome:'', login:'', senha:'', perfil:'atendente' };
+      this.carregarAdmin();
+    },
+  },
+  mounted() {
+    const t = localStorage.getItem('sga_token');
+    const u = localStorage.getItem('sga_usuario');
+    if (t && u) { this.token = t; this.usuario = JSON.parse(u); this.iniciar(); }
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

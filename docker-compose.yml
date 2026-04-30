@@ -1,0 +1,136 @@
+services:
+
+  nginx:
+    image: nginx:alpine
+    container_name: sga-nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+      - painel
+      - totem
+      - atendimento
+    networks:
+      - sga-net
+
+  api:
+    build: ./api
+    container_name: sga-api
+    restart: always
+    depends_on:
+      mysqldb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      TZ: America/Sao_Paulo
+      DB_HOST: mysqldb
+      DB_PORT: 3306
+      DB_NAME: clinicasga
+      DB_USER: sgaapp
+      DB_PASS: SGA_App_P4ssW0rd
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: TrocaEssaChaveJWTEmProducao_min32chars!
+      JWT_EXPIRES_IN: 8h
+    networks:
+      - sga-net
+
+  painel:
+    build: ./painel
+    container_name: sga-painel
+    restart: always
+    networks:
+      - sga-net
+
+  totem:
+    build: ./totem
+    container_name: sga-totem
+    restart: always
+    networks:
+      - sga-net
+
+  atendimento:
+    build: ./atendimento
+    container_name: sga-atendimento
+    restart: always
+    networks:
+      - sga-net
+
+  mysqldb:
+    image: mysql:8.0
+    container_name: sga-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: SGA_r00t_P4ssW0rd
+      MYSQL_DATABASE: clinicasga
+      MYSQL_USER: sgaapp
+      MYSQL_PASSWORD: SGA_App_P4ssW0rd
+      TZ: America/Sao_Paulo
+    volumes:
+      - sga-mysql-data:/var/lib/mysql
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD","mysqladmin","ping","-h","localhost","-u","root","-pSGA_r00t_P4ssW0rd"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sga-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: sga-redis
+    restart: always
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - sga-redis-data:/data
+    healthcheck:
+      test: ["CMD","redis-cli","ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - sga-net
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: sga-phpmyadmin
+    restart: always
+    ports:
+      - "8082:80"
+    environment:
+      PMA_HOST: mysqldb
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: SGA_r00t_P4ssW0rd
+    depends_on:
+      - mysqldb
+    networks:
+      - sga-net
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: sga-portainer
+    restart: always
+    ports:
+      - "9000:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - sga-portainer-data:/data
+    networks:
+      - sga-net
+
+volumes:
+  sga-mysql-data:
+  sga-redis-data:
+  sga-portainer-data:
+
+networks:
+  sga-net:
+    driver: bridge

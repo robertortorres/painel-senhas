@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel de Senhas</title>
+<script src="https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0a1628;color:#fff;font-family:'Segoe UI',sans-serif;height:100vh;display:grid;grid-template-columns:1fr 340px;grid-template-rows:1fr 90px;overflow:hidden}
+
+  /* ÁREA PRINCIPAL */
+  #main{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;gap:20px}
+  #chamada-label{font-size:1.1rem;letter-spacing:4px;text-transform:uppercase;color:#94a3b8}
+  #senha-codigo{font-size:9rem;font-weight:900;letter-spacing:8px;line-height:1;color:#fff;text-shadow:0 0 60px rgba(59,130,246,.6)}
+  #senha-codigo.prioritario{color:#fbbf24;text-shadow:0 0 60px rgba(251,191,36,.6)}
+  #senha-nome{font-size:2rem;color:#cbd5e1;margin-top:8px}
+  #senha-local{font-size:1.4rem;background:#1e40af;color:#bfdbfe;padding:10px 32px;border-radius:50px;margin-top:16px}
+  #sem-chamada{font-size:2rem;color:#475569;text-align:center}
+
+  /* ANIMAÇÃO DE ENTRADA */
+  @keyframes popIn{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+  .pop{animation:popIn .4s cubic-bezier(.175,.885,.32,1.275)}
+
+  /* HISTÓRICO */
+  #sidebar{background:#0f1e38;border-left:1px solid #1e3a5f;display:flex;flex-direction:column}
+  #sidebar-header{padding:16px;border-bottom:1px solid #1e3a5f;font-size:.8rem;letter-spacing:3px;text-transform:uppercase;color:#64748b}
+  #historico{flex:1;overflow-y:auto;padding:8px}
+  .hist-item{padding:12px 16px;border-bottom:1px solid #1e3a5f;display:flex;justify-content:space-between;align-items:center}
+  .hist-item:first-child{background:#132040}
+  .hist-codigo{font-size:1.4rem;font-weight:700;color:#93c5fd}
+  .hist-codigo.prioritario{color:#fbbf24}
+  .hist-local{font-size:.8rem;color:#64748b}
+
+  /* RODAPÉ */
+  #footer{background:#070e1c;border-top:1px solid #1e3a5f;display:flex;align-items:center;justify-content:center;font-size:1.6rem;letter-spacing:2px;color:#475569}
+  #footer-sidebar{background:#070e1c;border-top:1px solid #1e3a5f;border-left:1px solid #1e3a5f;display:flex;align-items:center;justify-content:center;font-size:.9rem;color:#334155}
+
+  #relogio{font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+
+<div id="main">
+  <div id="sem-chamada">Aguardando chamada...</div>
+  <div id="chamada-container" style="display:none;text-align:center">
+    <div id="chamada-label">Senha chamada</div>
+    <div id="senha-codigo" class="pop"></div>
+    <div id="senha-nome"></div>
+    <div id="senha-local"></div>
+  </div>
+</div>
+
+<div id="sidebar">
+  <div id="sidebar-header">Últimas chamadas</div>
+  <div id="historico"></div>
+</div>
+
+<div id="footer"><span id="relogio"></span></div>
+<div id="footer-sidebar">Sistema de Senhas</div>
+
+<script>
+const API_URL     = window.__ENV__?.API_URL || window.location.origin.replace(/:\d+/,'') + ':3001';
+const UNIDADE_ID  = new URLSearchParams(location.search).get('unidade') || 1;
+const MAX_HIST    = 8;
+const historico   = [];
+
+const elCodigo    = document.getElementById('senha-codigo');
+const elNome      = document.getElementById('senha-nome');
+const elLocal     = document.getElementById('senha-local');
+const elContainer = document.getElementById('chamada-container');
+const elSem       = document.getElementById('sem-chamada');
+const elHist      = document.getElementById('historico');
+const elRel       = document.getElementById('relogio');
+
+// Relógio
+setInterval(() => {
+  elRel.textContent = new Date().toLocaleTimeString('pt-BR');
+}, 1000);
+
+// Socket.io
+const socket = io(API_URL);
+socket.emit('join:unidade', { unidade_id: UNIDADE_ID });
+
+socket.on('senha:chamada', senha => {
+  mostrarSenha(senha);
+  vocalizar(senha);
+  adicionarHistorico(senha);
+});
+
+function mostrarSenha(s) {
+  elSem.style.display = 'none';
+  elContainer.style.display = 'block';
+  elCodigo.className = 'pop ' + (s.tipo === 'prioritario' ? 'prioritario' : '');
+  elCodigo.textContent = s.codigo;
+  elNome.textContent   = s.setor_nome || '';
+  elLocal.textContent  = s.local_nome ? `Dirija-se ao ${s.local_nome}` : '';
+  // re-trigger animation
+  void elCodigo.offsetWidth;
+  elCodigo.className = 'pop ' + (s.tipo === 'prioritario' ? 'prioritario' : '');
+}
+
+function adicionarHistorico(s) {
+  historico.unshift(s);
+  if (historico.length > MAX_HIST) historico.pop();
+  elHist.innerHTML = historico.map((h,i) => `
+    <div class="hist-item">
+      <span class="hist-codigo ${h.tipo==='prioritario'?'prioritario':''}">${h.codigo}</span>
+      <span class="hist-local">${h.local_nome||''}</span>
+    </div>`).join('');
+}
+
+function vocalizar(s) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const falar = txt => {
+    const u = new SpeechSynthesisUtterance(txt);
+    u.lang = 'pt-BR'; u.rate = 0.9; u.pitch = 1;
+    window.speechSynthesis.speak(u);
+  };
+  // Falar 2x com pausa
+  falar(`Senha ${s.codigo.split('').join(' ')}, ${s.setor_nome}, ${s.local_nome || ''}`);
+  setTimeout(() => falar(`Senha ${s.codigo.split('').join(' ')}, ${s.setor_nome}, ${s.local_nome || ''}`), 3000);
+}
+</script>
+</body>
+</html>
