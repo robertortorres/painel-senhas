@@ -70,6 +70,13 @@ docker compose --profile admin up -d      # phpMyAdmin em 127.0.0.1:8082, Portai
 ssh -L 8082:127.0.0.1:8082 usuario@servidor   # acesso pelo seu computador
 ```
 
+## Chamar de novo uma senha finalizada
+
+Na tela de atendimento, a aba **Finalizados** lista as senhas concluídas ou canceladas no dia, com busca
+pelo código. O botão **Chamar de novo** anuncia a senha no painel para o local selecionado por quem chamou
+(por exemplo, a recepção chamando de volta um paciente que já foi atendido). A senha continua finalizada:
+o atendimento não é reaberto e os tempos dos relatórios não mudam. Cada uso fica registrado no log da API.
+
 ## Painel TV
 
 O Chrome só permite falar depois de uma interação. Duas opções:

@@ -68,6 +68,10 @@ nav .nav-item.ativo{opacity:1;background:rgba(255,255,255,.2)}
 .fila-item .info .setor{font-size:.9rem;color:#64748b}
 .fila-item .info .tempo{font-size:.8rem;color:#94a3b8}
 .fila-item .acoes{display:flex;gap:6px}
+.fila-item.concluido{border-left-color:#94a3b8}
+.fila-item.cancelado{border-left-color:#ef4444}
+.busca-senha{width:100%;padding:10px 14px;border:1px solid #e2e8f0;border-radius:10px;font-size:1rem;margin-bottom:4px;text-transform:uppercase}
+.aviso-retorno{background:#ecfdf5;color:#047857;border-radius:8px;padding:8px 12px;font-size:.9rem}
 
 /* ABAS */
 .abas{display:flex;gap:4px;margin-bottom:16px;background:#e2e8f0;padding:4px;border-radius:10px;width:fit-content}
@@ -186,9 +190,30 @@ nav .nav-item.ativo{opacity:1;background:rgba(255,255,255,.2)}
           </div>
           <div class="aba" :class="{ativa:abaFila==='chamada'}" @click="abaFila='chamada'">Chamados</div>
           <div class="aba" :class="{ativa:abaFila==='atendimento'}" @click="abaFila='atendimento'">Em atendimento</div>
+          <div class="aba" :class="{ativa:abaFila==='finalizados'}" @click="abaFila='finalizados'; carregarFinalizadas()">Finalizados</div>
         </div>
 
-        <div class="fila-lista">
+        <!-- Finalizados hoje: permite chamar o paciente de volta -->
+        <div class="fila-lista" v-if="abaFila==='finalizados'">
+          <input class="busca-senha" v-model="buscaFinalizada" @input="carregarFinalizadas" placeholder="Buscar senha (ex.: AC003)">
+          <div class="aviso-retorno" v-if="avisoRetorno">{{ avisoRetorno }}</div>
+          <div class="fila-item" :class="s.status" v-for="s in finalizadas" :key="s.id">
+            <div class="codigo" :style="s.tipo==='prioritario'?'color:#f59e0b':''">{{ s.codigo }}</div>
+            <div class="info">
+              <div>{{ s.setor_nome }} · {{ s.status === 'cancelado' ? 'cancelada' : 'concluída' }}</div>
+              <div class="setor">{{ s.local_nome || '—' }}</div>
+              <div class="tempo">{{ formatarTempo(s.concluido_em || s.chamado_em || s.criado_em) }}</div>
+            </div>
+            <div class="acoes">
+              <button class="btn btn-amarelo" @click="chamarDeNovo(s)" title="Chamar o paciente de volta para o seu local">📢 Chamar de novo</button>
+            </div>
+          </div>
+          <div v-if="!finalizadas.length" style="text-align:center;color:#94a3b8;padding:32px">
+            {{ buscaFinalizada ? 'Nenhuma senha finalizada hoje com esse código' : 'Nenhuma senha finalizada hoje' }}
+          </div>
+        </div>
+
+        <div class="fila-lista" v-else>
           <div class="fila-item" :class="s.status" v-for="s in filtraFila" :key="s.id">
             <div class="codigo" :style="s.tipo==='prioritario'?'color:#f59e0b':''">{{ s.codigo }}</div>
             <div class="info">
@@ -430,6 +455,7 @@ const app = createApp({
       loginForm: { login: '', senha: '', carregando: false, erro: '' },
       aba: 'atendimento', abaFila: 'aguardando', abaAdmin: 'setores',
       fila: [], locais: [], senhaAtual: null, localSelecionado: '',
+      finalizadas: [], buscaFinalizada: '', avisoRetorno: '',
       socket: null,
       admin: { setores: [], locais: [], usuarios: [] },
       config: { clinica_nome: '', papel: '80mm', impressao: 'dialogo', salvo: false, logo_base64: '', tema: 'escuro', fundo_tipo: 'cor', fundo_valor: '#0a1628', clima_cidade: 'São Paulo', voz_sigla: false, voz_numero: false, voz_codigo: true, voz_setor: true, voz_local: true },
@@ -508,7 +534,11 @@ const app = createApp({
       let timer = null;
       const recarregar = () => {   // agrupa eventos seguidos em uma só requisição
         clearTimeout(timer);
-        timer = setTimeout(() => this.podeAtender && this.carregarFila().catch(() => {}), 300);
+        timer = setTimeout(() => {
+          if (!this.podeAtender) return;
+          this.carregarFila().catch(() => {});
+          if (this.abaFila === 'finalizados') this.carregarFinalizadas();
+        }, 300);
       };
       this.socket = io();
       // Reentra na sala a cada (re)conexão e recarrega o que mudou enquanto estava offline
@@ -526,6 +556,24 @@ const app = createApp({
         method:'POST', body: JSON.stringify({ local_id: this.localSelecionado })
       });
       this.carregarFila();
+    },
+    carregarFinalizadas() {
+      clearTimeout(this._timerBusca);   // espera parar de digitar
+      this._timerBusca = setTimeout(async () => {
+        try {
+          const q = encodeURIComponent(this.buscaFinalizada.trim());
+          this.finalizadas = await this.api(`/api/senhas/finalizadas?busca=${q}`);
+        } catch(e) { if (e.status !== 401) alert(e.erro || e.message); }
+      }, 250);
+    },
+    async chamarDeNovo(s) {
+      if (!this.localSelecionado) return alert('Selecione o local de atendimento');
+      const r = await this.api(`/api/senhas/${s.id}/chamar-novamente`, {
+        method:'POST', body: JSON.stringify({ local_id: this.localSelecionado })
+      });
+      this.avisoRetorno = `Senha ${r.codigo} chamada de novo para ${r.local_nome}`;
+      clearTimeout(this._timerAviso);
+      this._timerAviso = setTimeout(() => { this.avisoRetorno = ''; }, 6000);
     },
     async chamarSenha(s) {
       if (!this.localSelecionado) return alert('Selecione o local de atendimento');

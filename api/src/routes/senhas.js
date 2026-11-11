@@ -65,6 +65,20 @@ router.get('/atual', auth, async (req, res) => {
   res.json(senha || null);
 });
 
+// GET /api/senhas/finalizadas?busca=AC003 — concluídas/canceladas de hoje (aba "Finalizados")
+router.get('/finalizadas', auth, perfil(...ATENDEM), async (req, res) => {
+  const unidadeId = unidadeDaRequisicao(req, req.query.unidade_id);
+  const busca = String(req.query.busca || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+  const params = [unidadeId];
+  let filtro = '';
+  if (busca) { filtro = 'AND s.codigo LIKE ?'; params.push(`%${busca}%`); }
+  const [rows] = await db.query(`${svc.SELECT_SENHA}
+    WHERE s.unidade_id = ? AND s.status IN ('concluido','cancelado') AND s.criado_em >= CURDATE() ${filtro}
+    ORDER BY COALESCE(s.concluido_em, s.chamado_em, s.criado_em) DESC, s.id DESC
+    LIMIT 100`, params);
+  res.json(rows);
+});
+
 // POST /api/senhas/proxima — o servidor escolhe a próxima senha { local_id, setores: [ids] }
 router.post('/proxima', auth, perfil(...ATENDEM), async (req, res) => {
   const unidadeId = unidadeDaRequisicao(req, req.body?.unidade_id);
@@ -98,6 +112,23 @@ router.post('/:id/rechamar', auth, perfil(...ATENDEM), async (req, res) => {
   if (!['chamada', 'atendimento'].includes(senha.status)) throw erro(409, 'Senha não está em chamada');
   svc.emitirChamada(req.io, senha, { rechamada: true });
   res.json(senha);
+});
+
+// POST /api/senhas/:id/chamar-novamente { local_id }
+// Chama de volta uma senha já finalizada hoje (ex.: o paciente precisa voltar à recepção).
+// Só anuncia no painel, no local de quem chamou: não reabre o atendimento nem altera os tempos dos relatórios.
+router.post('/:id/chamar-novamente', auth, perfil(...ATENDEM), async (req, res) => {
+  const senha = await senhaDaUnidade(req);
+  if (!['concluido', 'cancelado'].includes(senha.status)) {
+    throw erro(409, `A senha ${senha.codigo} ainda está em andamento: use "Rechamar"`);
+  }
+  const [[deHoje]] = await db.query('SELECT id FROM senhas WHERE id = ? AND criado_em >= CURDATE()', [senha.id]);
+  if (!deHoje) throw erro(409, 'Só é possível chamar de novo senhas de hoje');
+  const localId = await localDaUnidade(req.body?.local_id, senha.unidade_id);
+  const [[local]] = await db.query('SELECT nome FROM locais WHERE id = ?', [localId]);
+  svc.emitirChamada(req.io, { ...senha, local_nome: local.nome }, { retorno: true });
+  console.log(`[retorno] ${senha.codigo} chamada novamente para ${local.nome} por ${req.usuario.login}`);
+  res.json({ ok: true, codigo: senha.codigo, local_nome: local.nome });
 });
 
 async function mudarStatus(req, novo, permitidos, extraSet = '') {
