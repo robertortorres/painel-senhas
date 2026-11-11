@@ -1,7 +1,6 @@
-require('dotenv').config();
-const express    = require('express');
-const http       = require('http');
-const cors       = require('cors');
+const config = require('./config');
+const express = require('express');
+const http = require('http');
 const { Server } = require('socket.io');
 const db         = require('./models/db');
 const redisClient= require('./services/redis');

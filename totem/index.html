@@ -173,13 +173,18 @@ async function carregarSetores() {
   }
 }
 
-function selecionarSetor(id, nome, prefixo) {
-  setorSelecionado = { id, nome, prefixo };
+function selecionarSetor(setor) {
+  setorSelecionado = setor;
   mostrarTela('tela-tipo');
+  agendarVolta(VOLTAR_INATIVO_MS);
 }
-function voltarSetores() { mostrarTela('tela-setores'); }
+function voltarSetores() { reiniciar(); }
 
+// ---------- Gerar senha ----------
 async function gerarSenha(tipo) {
+  if (gerando || !setorSelecionado) return;   // evita senha dupla com toque duplo
+  gerando = true;
+  clearTimeout(timerVolta);
   mostrarTela('tela-aguarde');
   try {
     const r = await fetch(`${API_URL}/api/senhas`, {
@@ -196,6 +201,7 @@ async function gerarSenha(tipo) {
     document.getElementById('suc-setor').textContent  = senha.setor_nome;
     document.getElementById('suc-posicao').textContent = `Você é o ${senha.posicao}º na fila`;
     mostrarTela('tela-sucesso');
+    agendarVolta(VOLTAR_SUCESSO_MS);
 
     preencherComprovante(senha);
 
@@ -210,6 +216,8 @@ async function gerarSenha(tipo) {
     autoReset = setTimeout(reiniciar, 25000);
   } catch(e) {
     mostrarErro(e.message);
+  } finally {
+    gerando = false;
   }
 }
 
@@ -228,8 +236,9 @@ function imprimirComprovante() {
   window.print();
 }
 
+// ---------- Navegação ----------
 function mostrarTela(id) {
-  ['tela-setores','tela-tipo','tela-aguarde','tela-sucesso','tela-erro'].forEach(t => {
+  ['tela-setores', 'tela-tipo', 'tela-aguarde', 'tela-sucesso', 'tela-erro'].forEach(t => {
     const el = document.getElementById(t);
     el.style.display = 'none';
     el.classList.remove('fade');
@@ -240,9 +249,10 @@ function mostrarTela(id) {
   el.classList.add('fade');
 }
 
-function mostrarErro(msg) {
+function mostrarErro(msg, voltarSozinho = true) {
   document.getElementById('erro-txt').textContent = msg;
   mostrarTela('tela-erro');
+  if (voltarSozinho) agendarVolta(VOLTAR_INATIVO_MS);
 }
 
 function reiniciar() {

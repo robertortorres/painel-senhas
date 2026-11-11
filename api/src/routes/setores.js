@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db = require('../models/db');
-const { auth, perfil } = require('../middleware/auth');
+const { auth, perfil, unidadeDaRequisicao, garantirUnidade } = require('../middleware/auth');
+const { erro, inteiroPositivo, texto, opcional, booleano } = require('../lib/http');
 
 router.get('/', async (req, res) => {
   try {

@@ -141,6 +141,7 @@ video#bg-video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-
 <button class="btn-orientacao" id="btn-orient" onclick="toggleOrientacao()">⟳ Girar</button>
 <button class="btn-orientacao" id="btn-som" onclick="ativarSom()" style="bottom:48px;background:rgba(239,68,68,.3);border-color:#ef4444;color:#fca5a5">🔇 Ativar Som</button>
 
+<script src="/socket.io/socket.io.js"></script>
 <script>
 const API_URL    = window.location.origin;
 const UNIDADE_ID = parseInt(new URLSearchParams(location.search).get('unidade') || 1);
@@ -253,6 +254,55 @@ socket.on('senha:chamada', senha => {
   vocalizar(senha);
 });
 
+function ding() {
+  if (!audioCtx) return Promise.resolve();
+  return new Promise(resolve => {
+    const t = audioCtx.currentTime;
+    [[880, 0], [660, 0.35]].forEach(([freq, atraso]) => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.frequency.value = freq; o.type = 'sine';
+      g.gain.setValueAtTime(0.0001, t + atraso);
+      g.gain.exponentialRampToValueAtTime(0.4, t + atraso + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + atraso + 0.5);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(t + atraso); o.stop(t + atraso + 0.55);
+    });
+    setTimeout(resolve, 900);
+  });
+}
+
+// Fila de anúncios: chamadas seguidas não se atropelam
+const filaAnuncios = [];
+let anunciando = false;
+function falar(txt) {
+  return new Promise(resolve => {
+    if (!window.speechSynthesis) return resolve();
+    const u = new SpeechSynthesisUtterance(txt);
+    u.lang = 'pt-BR'; u.rate = 0.9; u.pitch = 1;
+    u.onend = u.onerror = () => resolve();
+    speechSynthesis.speak(u);
+    setTimeout(resolve, 10000); // segurança se o onend não disparar
+  });
+}
+async function processarAnuncios() {
+  if (anunciando) return;
+  anunciando = true;
+  while (filaAnuncios.length) {
+    const s = filaAnuncios.shift();
+    const texto = `Senha ${String(s.codigo).split('').join(' ')}, ${s.setor_nome || ''}, ${s.local_nome || ''}`;
+    await ding();
+    await falar(texto);
+    await new Promise(r => setTimeout(r, 800));
+    await falar(texto);
+  }
+  anunciando = false;
+}
+function anunciar(s) {
+  filaAnuncios.push(s);
+  processarAnuncios();
+}
+
+// ---------- Tela ----------
 function mostrarSenha(s) {
   document.getElementById('aguardando-msg').style.display = 'none';
   const c = document.getElementById('chamada-container');

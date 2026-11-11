@@ -1,11 +1,12 @@
+# Variáveis vêm do arquivo .env (copie de .env.example). Nunca commite o .env.
 services:
 
   nginx:
-    image: nginx:alpine
+    image: nginx:1.27-alpine
     container_name: sga-nginx
-    restart: always
+    restart: unless-stopped
     ports:
-      - "80:80"
+      - "${HTTP_PORT:-80}:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -20,46 +21,46 @@ services:
   api:
     build: ./api
     container_name: sga-api
-    restart: always
+    restart: unless-stopped
     depends_on:
       mysqldb:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     environment:
       NODE_ENV: production
       PORT: 3001
-      TZ: America/Sao_Paulo
+      TZ: ${TZ:-America/Sao_Paulo}
       DB_HOST: mysqldb
       DB_PORT: 3306
-      DB_NAME: clinicasga
-      DB_USER: sgaapp
-      DB_PASS: SGA_App_P4ssW0rd
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      JWT_SECRET: TrocaEssaChaveJWTEmProducao_min32chars!
-      JWT_EXPIRES_IN: 8h
+      DB_NAME: ${DB_NAME:-clinicasga}
+      DB_USER: ${DB_USER:-sgaapp}
+      DB_PASS: ${DB_PASS:?Defina DB_PASS no .env}
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET no .env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      ADMIN_SENHA_INICIAL: ${ADMIN_SENHA_INICIAL:-}
+      PRIORIDADE_A_CADA: ${PRIORIDADE_A_CADA:-0}
+      LIMITE_SENHAS_MINUTO: ${LIMITE_SENHAS_MINUTO:-30}
+      TRUST_PROXY: ${TRUST_PROXY:-1}
     networks:
       - sga-net
 
   painel:
     build: ./painel
     container_name: sga-painel
-    restart: always
+    restart: unless-stopped
     networks:
       - sga-net
 
   totem:
     build: ./totem
     container_name: sga-totem
-    restart: always
+    restart: unless-stopped
     networks:
       - sga-net
 
   atendimento:
     build: ./atendimento
     container_name: sga-atendimento
-    restart: always
+    restart: unless-stopped
     networks:
       - sga-net
 
@@ -73,13 +74,13 @@ services:
   mysqldb:
     image: mysql:8.0
     container_name: sga-mysql
-    restart: always
+    restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: SGA_r00t_P4ssW0rd
-      MYSQL_DATABASE: clinicasga
-      MYSQL_USER: sgaapp
-      MYSQL_PASSWORD: SGA_App_P4ssW0rd
-      TZ: America/Sao_Paulo
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Defina MYSQL_ROOT_PASSWORD no .env}
+      MYSQL_DATABASE: ${DB_NAME:-clinicasga}
+      MYSQL_USER: ${DB_USER:-sgaapp}
+      MYSQL_PASSWORD: ${DB_PASS:?Defina DB_PASS no .env}
+      TZ: ${TZ:-America/Sao_Paulo}
     volumes:
       - sga-mysql-data:/var/lib/mysql
       - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -107,28 +108,30 @@ services:
     networks:
       - sga-net
 
+  # Ferramentas administrativas: só sobem com `docker compose --profile admin up -d`
+  # e ficam presas ao localhost do servidor (acesse por túnel SSH ou VPN).
   phpmyadmin:
-    image: phpmyadmin:latest
+    image: phpmyadmin:5.2
     container_name: sga-phpmyadmin
-    restart: always
+    restart: unless-stopped
+    profiles: ["admin"]
     ports:
-      - "8082:80"
+      - "127.0.0.1:8082:80"
     environment:
       PMA_HOST: mysqldb
       PMA_PORT: 3306
-      PMA_USER: root
-      PMA_PASSWORD: SGA_r00t_P4ssW0rd
     depends_on:
       - mysqldb
     networks:
       - sga-net
 
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:2.21.5
     container_name: sga-portainer
-    restart: always
+    restart: unless-stopped
+    profiles: ["admin"]
     ports:
-      - "9000:9000"
+      - "127.0.0.1:9000:9000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - sga-portainer-data:/data
@@ -137,7 +140,6 @@ services:
 
 volumes:
   sga-mysql-data:
-  sga-redis-data:
   sga-portainer-data:
 
 networks:

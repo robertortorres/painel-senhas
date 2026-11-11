@@ -1,5 +1,7 @@
+SET NAMES utf8mb4;
 CREATE DATABASE IF NOT EXISTS clinicasga CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE clinicasga;
+SET time_zone = '-03:00';
 
 CREATE TABLE unidades (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -62,8 +64,13 @@ CREATE TABLE senhas (
   local_id INT,
   usuario_id INT,
   criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
-  chamado_em DATETIME,
+  chamado_em DATETIME(3),
   concluido_em DATETIME,
+  criado_dia DATE GENERATED ALWAYS AS (DATE(criado_em)) STORED,
+  UNIQUE KEY uk_senha_dia (unidade_id, setor_id, criado_dia, numero),
+  KEY idx_fila (unidade_id, status, criado_em),
+  KEY idx_chamado (unidade_id, chamado_em),
+  KEY idx_usuario (usuario_id, status),
   FOREIGN KEY (unidade_id) REFERENCES unidades(id),
   FOREIGN KEY (setor_id) REFERENCES setores(id),
   FOREIGN KEY (local_id) REFERENCES locais(id),

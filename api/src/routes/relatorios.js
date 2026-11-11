@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db = require('../models/db');
-const { auth } = require('../middleware/auth');
+const { auth, perfil, unidadeDaRequisicao } = require('../middleware/auth');
+const { dataISO } = require('../lib/http');
 
 router.get('/dashboard', auth, async (req, res) => {
   const { unidade_id, data_ini, data_fim, usuario_id, local_id, setor_id } = req.query;
