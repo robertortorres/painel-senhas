@@ -58,6 +58,8 @@
   /* STATUS BLE */
   #ble-status{position:absolute;top:12px;right:12px;font-size:.75rem;padding:4px 10px;border-radius:50px;background:#1e293b;color:#475569;border:1px solid #334155}
   #ble-status.conectado{color:#4ade80;border-color:#166534}
+  #ble-status.erro{color:#f87171;border-color:#7f1d1d}
+  .btn-tipo.desabilitado{opacity:.5;pointer-events:none}
 
   @keyframes fadeIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
   .fade{animation:fadeIn .3s ease}
@@ -121,152 +123,184 @@
 </div>
 
 <script>
-const API_URL    = (window.__ENV__?.API_URL || 'http://localhost:3001');
-const UNIDADE_ID = parseInt(new URLSearchParams(location.search).get('unidade') || 1);
+const UNIDADE_ID = parseInt(new URLSearchParams(location.search).get('unidade') || '1', 10);
+const VOLTAR_SUCESSO_MS = 20000;   // volta para o início depois de mostrar a senha
+const VOLTAR_INATIVO_MS = 30000;   // volta se alguém escolheu o setor e desistiu
 let setorSelecionado = null;
 let ultimaSenha      = null;
+let gerando          = false;
+let timerVolta       = null;
 let bleDevice        = null;
 let bleChar          = null;
 const bleStatus      = document.getElementById('ble-status');
 
-// Carregar setores
+function agendarVolta(ms) {
+  clearTimeout(timerVolta);
+  timerVolta = setTimeout(reiniciar, ms);
+}
+
+// ---------- Setores ----------
 async function carregarSetores() {
   try {
-    const r = await fetch(`${API_URL}/api/setores?unidade_id=${UNIDADE_ID}`);
-    const setores = await r.json();
+    const [rs, ru] = await Promise.all([
+      fetch(`/api/publico/setores?unidade_id=${UNIDADE_ID}`),
+      fetch(`/api/publico/unidades/${UNIDADE_ID}`),
+    ]);
+    if (!rs.ok) throw new Error('HTTP ' + rs.status);
+    const setores = await rs.json();
+    if (ru.ok) document.getElementById('clinica-nome').textContent = (await ru.json()).nome;
+
     const grid = document.getElementById('grid-setores');
-    grid.innerHTML = setores.map(s => `
-      <div class="btn-setor" onclick="selecionarSetor(${s.id},'${s.nome}','${s.prefixo}')">
-        <div class="prefixo">${s.prefixo}</div>
-        <div class="nome">${s.nome}</div>
-      </div>`).join('');
-    document.getElementById('clinica-nome').textContent = 'Clínica — Unidade';
-  } catch(e) {
-    mostrarErro('Erro ao carregar setores. Verifique a conexão.');
+    grid.replaceChildren(...setores.map(s => {
+      const btn = document.createElement('div');
+      btn.className = 'btn-setor';
+      const pre = document.createElement('div'); pre.className = 'prefixo'; pre.textContent = s.prefixo;
+      const nome = document.createElement('div'); nome.className = 'nome'; nome.textContent = s.nome;
+      btn.append(pre, nome);
+      btn.addEventListener('click', () => selecionarSetor(s));
+      return btn;
+    }));
+    if (!setores.length) mostrarErro('Nenhum setor disponível para esta unidade.', false);
+  } catch (e) {
+    mostrarErro('Sem conexão com o servidor. Tentando novamente...', false);
+    setTimeout(() => { carregarSetores().then(() => { if (document.getElementById('grid-setores').children.length) reiniciar(); }); }, 10000);
   }
 }
 
-function selecionarSetor(id, nome, prefixo) {
-  setorSelecionado = { id, nome, prefixo };
+function selecionarSetor(setor) {
+  setorSelecionado = setor;
   mostrarTela('tela-tipo');
+  agendarVolta(VOLTAR_INATIVO_MS);
 }
-function voltarSetores() { mostrarTela('tela-setores'); }
+function voltarSetores() { reiniciar(); }
 
+// ---------- Gerar senha ----------
 async function gerarSenha(tipo) {
+  if (gerando || !setorSelecionado) return;   // evita senha dupla com toque duplo
+  gerando = true;
+  clearTimeout(timerVolta);
   mostrarTela('tela-aguarde');
   try {
-    const r = await fetch(`${API_URL}/api/senhas`, {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ unidade_id: UNIDADE_ID, setor_id: setorSelecionado.id, tipo })
+    const r = await fetch('/api/senhas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ unidade_id: UNIDADE_ID, setor_id: setorSelecionado.id, tipo }),
     });
-    if (!r.ok) throw new Error('Erro ' + r.status);
-    const { senha, escpos } = await r.json();
+    const corpo = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(corpo.erro || 'Erro ' + r.status);
+    const { senha, escpos } = corpo;
     ultimaSenha = { senha, escpos };
 
-    document.getElementById('suc-codigo').textContent = senha.codigo;
-    document.getElementById('suc-codigo').className   = 'senha-big' + (tipo==='prioritario'?' prioritario':'');
-    document.getElementById('suc-setor').textContent  = senha.setor_nome;
+    document.getElementById('suc-codigo').textContent  = senha.codigo;
+    document.getElementById('suc-codigo').className    = 'senha-big' + (tipo === 'prioritario' ? ' prioritario' : '');
+    document.getElementById('suc-setor').textContent   = senha.setor_nome;
     document.getElementById('suc-posicao').textContent = `Você é o ${senha.posicao}º na fila`;
     mostrarTela('tela-sucesso');
+    agendarVolta(VOLTAR_SUCESSO_MS);
 
-    // Tentar imprimir automaticamente se já tiver dispositivo pareado
-    if (bleDevice && bleChar) imprimirBLE();
-  } catch(e) {
+    // Imprime sozinho se a impressora já estiver conectada
+    if (bleChar && bleDevice?.gatt.connected) imprimirBLE();
+  } catch (e) {
     mostrarErro(e.message);
+  } finally {
+    gerando = false;
   }
 }
 
-// Web Bluetooth API — impressão ESC/POS via BLE
-async function imprimirBLE() {
-  if (!navigator.bluetooth) {
-    alert('Web Bluetooth não disponível. Use Chrome no Android.');
-    return;
+// ---------- Impressão ESC/POS via Web Bluetooth ----------
+// Requer HTTPS (ou localhost) e Chrome no Android
+const BLE_DISPONIVEL = !!navigator.bluetooth && window.isSecureContext;
+if (!BLE_DISPONIVEL) {
+  bleStatus.textContent = window.isSecureContext ? 'BLE indisponível' : 'BLE requer HTTPS';
+  bleStatus.className = 'erro';
+  document.querySelector('.btn-print').style.display = 'none';
+}
+
+async function conectarImpressora() {
+  if (!bleDevice) {
+    bleDevice = await navigator.bluetooth.requestDevice({
+      filters: [
+        { services: [0xFF00] },
+        { services: [0x18F0] },
+        { namePrefix: 'Printer' },
+        { namePrefix: 'RPP' },
+        { namePrefix: 'MTP' },
+        { namePrefix: 'Elgin' },
+        { namePrefix: 'Bema' },
+      ],
+      optionalServices: [0xFF00, 0x18F0, '000018f0-0000-1000-8000-00805f9b34fb'],
+    });
+    bleDevice.addEventListener('gattserverdisconnected', () => {
+      bleChar = null;
+      bleStatus.textContent = 'Impressora desconectada';
+      bleStatus.className = '';
+    });
   }
+  if (bleChar && bleDevice.gatt.connected) return bleChar;
+
+  const server = await bleDevice.gatt.connect();
+  let service;
+  for (const uuid of [0xFF00, 0x18F0, '000018f0-0000-1000-8000-00805f9b34fb']) {
+    try { service = await server.getPrimaryService(uuid); break; } catch {}
+  }
+  if (!service) throw new Error('Serviço de impressão não encontrado.');
+  for (const uuid of [0xFF02, 0x2AF1, '00002af1-0000-1000-8000-00805f9b34fb']) {
+    try { bleChar = await service.getCharacteristic(uuid); break; } catch {}
+  }
+  if (!bleChar) throw new Error('Característica de escrita não encontrada.');
+  return bleChar;
+}
+
+async function imprimirBLE() {
+  if (!BLE_DISPONIVEL) return;
+  if (!ultimaSenha) return;
   try {
-    bleStatus.textContent = 'Conectando...';
-    bleStatus.className   = '';
-
-    // Tentar reconectar ao dispositivo já pareado
-    if (!bleDevice || !bleDevice.gatt.connected) {
-      bleDevice = await navigator.bluetooth.requestDevice({
-        filters: [
-          { services: [0xFF00] },
-          { services: [0x18F0] },
-          { namePrefix: 'Printer' },
-          { namePrefix: 'RPP' },
-          { namePrefix: 'MTP' },
-          { namePrefix: 'Elgin' },
-          { namePrefix: 'Bema' },
-        ],
-        optionalServices: [0xFF00, 0x18F0, '000018f0-0000-1000-8000-00805f9b34fb']
-      });
-    }
-
-    const server  = await bleDevice.gatt.connect();
-
-    // Tentar diferentes UUIDs de serviço
-    let service;
-    for (const uuid of [0xFF00, 0x18F0, '000018f0-0000-1000-8000-00805f9b34fb']) {
-      try { service = await server.getPrimaryService(uuid); break; } catch {}
-    }
-    if (!service) throw new Error('Serviço de impressão não encontrado.');
-
-    // Tentar diferentes UUIDs de characterística
-    let char;
-    for (const uuid of [0xFF02, 0x2AF1, '00002af1-0000-1000-8000-00805f9b34fb']) {
-      try { char = await service.getCharacteristic(uuid); break; } catch {}
-    }
-    if (!char) throw new Error('Characterística de escrita não encontrada.');
-    bleChar = char;
-
-    // Enviar payload ESC/POS em chunks de 20 bytes (limite BLE)
+    bleStatus.textContent = 'Imprimindo...';
+    bleStatus.className = '';
+    const ch = await conectarImpressora();
     const data = new Uint8Array(ultimaSenha.escpos);
-    const CHUNK = 20;
+    const CHUNK = 20; // limite seguro de MTU no BLE
     for (let i = 0; i < data.length; i += CHUNK) {
-      await char.writeValueWithoutResponse(data.slice(i, i + CHUNK));
+      const parte = data.slice(i, i + CHUNK);
+      if (ch.properties.writeWithoutResponse) await ch.writeValueWithoutResponse(parte);
+      else await ch.writeValueWithResponse(parte);
       await new Promise(r => setTimeout(r, 30));
     }
-
     bleStatus.textContent = 'Impressora OK';
-    bleStatus.className   = 'conectado';
-  } catch(e) {
-    bleStatus.textContent = 'BLE erro';
+    bleStatus.className = 'conectado';
+  } catch (e) {
+    bleChar = null;
+    bleStatus.textContent = 'Erro na impressora';
+    bleStatus.className = 'erro';
     if (e.name !== 'NotFoundError') alert('Erro na impressão: ' + e.message);
   }
 }
 
+// ---------- Navegação ----------
 function mostrarTela(id) {
-  ['tela-setores','tela-tipo','tela-aguarde','tela-sucesso','tela-erro'].forEach(t => {
+  ['tela-setores', 'tela-tipo', 'tela-aguarde', 'tela-sucesso', 'tela-erro'].forEach(t => {
     const el = document.getElementById(t);
     el.style.display = 'none';
     el.classList.remove('fade');
   });
   const el = document.getElementById(id);
-  el.style.display = id === 'tela-setores' ? 'block' :
-                     id === 'tela-tipo'    ? 'flex'  :
-                     'flex';
+  el.style.display = id === 'tela-setores' ? 'block' : 'flex';
   void el.offsetWidth;
   el.classList.add('fade');
 }
 
-function mostrarErro(msg) {
+function mostrarErro(msg, voltarSozinho = true) {
   document.getElementById('erro-txt').textContent = msg;
   mostrarTela('tela-erro');
+  if (voltarSozinho) agendarVolta(VOLTAR_INATIVO_MS);
 }
 
 function reiniciar() {
+  clearTimeout(timerVolta);
   setorSelecionado = null;
   ultimaSenha = null;
   mostrarTela('tela-setores');
 }
-
-// Auto-retorno para tela inicial após 20s na tela de sucesso
-let autoReset;
-document.getElementById('tela-sucesso').addEventListener('transitionend', () => {
-  clearTimeout(autoReset);
-  autoReset = setTimeout(reiniciar, 20000);
-});
 
 carregarSetores();
 </script>

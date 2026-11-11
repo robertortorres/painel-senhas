@@ -1,14 +1,19 @@
 const mysql = require('mysql2/promise');
+const { db } = require('../config');
+
+// Brasil sem horário de verão desde 2019: offset fixo é seguro
+const OFFSET = '-03:00';
 
 const pool = mysql.createPool({
-  host:     process.env.DB_HOST || 'mysqldb',
-  port:     process.env.DB_PORT || 3306,
-  database: process.env.DB_NAME || 'clinicasga',
-  user:     process.env.DB_USER || 'sgaapp',
-  password: process.env.DB_PASS || 'SGA_App_P4ssW0rd',
+  ...db,
   waitForConnections: true,
   connectionLimit: 10,
-  timezone: '-03:00'
+  timezone: OFFSET,
+});
+
+// Garante que NOW()/CURDATE() usem o horário de Brasília, independente do TZ do servidor MySQL
+pool.on('connection', conn => {
+  conn.query(`SET time_zone = '${OFFSET}'`);
 });
 
 module.exports = pool;
