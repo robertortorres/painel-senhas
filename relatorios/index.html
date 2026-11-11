@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AtendFlex — Relatórios</title>
+<script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+:root{--bg:#f8f7f4;--surface:#fff;--surface2:#f1f0ed;--border:#e8e6e1;--text:#1a1917;--text2:#6b6860;--text3:#9b9890;--blue:#2563eb;--blue-light:#dbeafe;--green:#16a34a;--green-light:#dcfce7;--amber:#d97706;--amber-light:#fef3c7;--red:#dc2626;--red-light:#fee2e2;--purple:#7c3aed;--shadow-md:0 4px 12px rgba(0,0,0,.08)}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh}
+#app{display:flex;flex-direction:column;min-height:100vh}
+nav{background:var(--surface);border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-items:center;gap:16px;height:58px;position:sticky;top:0;z-index:100}
+.logo{font-size:1rem;font-weight:700}.logo span{color:var(--blue)}
+.btn-sair{font-size:.85rem;color:var(--text3);cursor:pointer;padding:4px 10px;border-radius:6px;margin-left:auto}
+.btn-sair:hover{background:var(--surface2)}
+#login-wrap{flex:1;display:flex;align-items:center;justify-content:center}
+.login-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:40px;width:100%;max-width:360px;box-shadow:var(--shadow-md)}
+.login-card h2{font-size:1.3rem;font-weight:700;margin-bottom:6px}
+.login-card p{font-size:.85rem;color:var(--text2);margin-bottom:28px}
+.campo{margin-bottom:16px}
+.campo label{display:block;font-size:.8rem;font-weight:500;color:var(--text2);margin-bottom:5px}
+.campo input{width:100%;padding:9px 13px;border:1px solid var(--border);border-radius:8px;font-size:.9rem;font-family:inherit;outline:none;transition:.15s}
+.campo input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.08)}
+.btn-login{width:100%;background:var(--blue);color:#fff;border:none;padding:11px;border-radius:8px;font-size:.9rem;font-weight:600;cursor:pointer;font-family:inherit}
+.erro-login{color:var(--red);font-size:.8rem;text-align:center;margin-top:10px}
+#conteudo{flex:1;padding:28px;max-width:1280px;width:100%;margin:0 auto}
+.filtros{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:24px}
+.filtros label{font-size:.8rem;font-weight:500;color:var(--text2);white-space:nowrap}
+.filtros input,.filtros select{padding:7px 11px;border:1px solid var(--border);border-radius:7px;font-size:.85rem;font-family:inherit;outline:none;background:var(--surface);color:var(--text)}
+.filtros input:focus,.filtros select:focus{border-color:var(--blue)}
+.filtros select{min-width:140px}
+.btn-buscar{background:var(--blue);color:#fff;border:none;padding:8px 20px;border-radius:7px;font-size:.85rem;font-weight:600;cursor:pointer;font-family:inherit}
+.btn-pdf{background:var(--surface);color:var(--red);border:1px solid var(--red);padding:8px 16px;border-radius:7px;font-size:.85rem;font-weight:600;cursor:pointer;font-family:inherit}
+.btn-pdf:hover{background:var(--red-light)}
+.atalhos{display:flex;gap:6px;flex-wrap:wrap}
+.atalho{padding:5px 12px;border:1px solid var(--border);border-radius:20px;font-size:.78rem;cursor:pointer;color:var(--text2);background:var(--surface)}
+.atalho:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-light)}
+.sep{width:1px;height:28px;background:var(--border);margin:0 4px}
+.cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:24px}
+.card-stat{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;position:relative;overflow:hidden}
+.card-stat::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.card-stat.azul::before{background:var(--blue)}.card-stat.verde::before{background:var(--green)}
+.card-stat.amber::before{background:var(--amber)}.card-stat.vermelho::before{background:var(--red)}
+.card-stat.roxo::before{background:var(--purple)}
+.card-stat .lbl{font-size:.72rem;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.card-stat .val{font-size:2rem;font-weight:700;font-family:'DM Mono',monospace;letter-spacing:-1px;line-height:1}
+.card-stat .sub{font-size:.78rem;color:var(--text2);margin-top:4px}
+.card-stat .ic{position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:2rem;opacity:.08}
+.graficos-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
+.gc{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px}
+.gc.full{grid-column:1/-1}
+.gc h3{font-size:.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px}
+.gw{position:relative;height:220px}.gw.alto{height:260px}
+.tc{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px}
+.tc h3{font-size:.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:8px 12px;font-size:.72rem;font-weight:600;color:var(--text3);border-bottom:2px solid var(--border);text-transform:uppercase;letter-spacing:.4px}
+td{padding:10px 12px;border-bottom:1px solid var(--border);font-size:.85rem}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--surface2)}
+.tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:.72rem;font-weight:600}
+.tag.v{background:var(--green-light);color:var(--green)}.tag.a{background:var(--amber-light);color:var(--amber)}
+.tag.r{background:var(--red-light);color:var(--red)}.tag.b{background:var(--blue-light);color:var(--blue)}
+.vazio{text-align:center;padding:60px 20px;color:var(--text3)}
+.loading{display:flex;align-items:center;justify-content:center;padding:60px;gap:10px;color:var(--text3)}
+.spin{width:22px;height:22px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.filtro-ativo{background:var(--blue-light);border-color:var(--blue);color:var(--blue);font-size:.78rem;padding:4px 10px;border-radius:20px;display:inline-flex;align-items:center;gap:4px}
+.filtro-ativo span{cursor:pointer;font-weight:700}
+@media print{nav,.filtros .btn-buscar,.filtros .btn-pdf,.filtros .atalhos,.filtros .sep,.filtros select{display:none!important}body{background:#fff}.gc,.card-stat,.tc{box-shadow:none;border-color:#ddd;break-inside:avoid}@page{margin:15mm;size:A4}}
+@media(max-width:768px){.graficos-grid{grid-template-columns:1fr}.gc.full{grid-column:1}.cards-grid{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div id="app">
+
+<div id="login-wrap" v-if="!usuario">
+  <div class="login-card">
+    <h2>AtendFlex Relatórios</h2>
+    <p>Entre com sua conta para acessar</p>
+    <div class="campo"><label>Login</label><input v-model="lf.login" placeholder="seu.login" @keyup.enter="login"></div>
+    <div class="campo"><label>Senha</label><input v-model="lf.senha" type="password" placeholder="••••••••" @keyup.enter="login"></div>
+    <button class="btn-login" @click="login" :disabled="lf.load">{{ lf.load?'Entrando...':'Entrar' }}</button>
+    <div class="erro-login" v-if="lf.erro">{{ lf.erro }}</div>
+  </div>
+</div>
+
+<template v-if="usuario">
+  <nav>
+    <div class="logo">SGA <span>Relatórios</span></div>
+    <span style="font-size:.83rem;color:var(--text3);margin-left:auto">{{ usuario.nome }}</span>
+    <span class="btn-sair" @click="sair">Sair</span>
+  </nav>
+  <div id="conteudo">
+
+    <!-- FILTROS -->
+    <div class="filtros">
+      <label>De</label><input type="date" v-model="f.ini">
+      <label>Até</label><input type="date" v-model="f.fim">
+      <div class="atalhos">
+        <span class="atalho" @click="range('hoje')">Hoje</span>
+        <span class="atalho" @click="range('semana')">7 dias</span>
+        <span class="atalho" @click="range('mes')">Este mês</span>
+        <span class="atalho" @click="range('mes_ant')">Mês anterior</span>
+        <span class="atalho" @click="range('ano')">Este ano</span>
+      </div>
+      <div class="sep"></div>
+      <label>Setor</label>
+      <select v-model="f.setor_id">
+        <option value="">Todos</option>
+        <option v-for="s in listas.setores" :key="s.id" :value="s.id">{{ s.prefixo }} {{ s.nome }}</option>
+      </select>
+      <label>Guichê</label>
+      <select v-model="f.local_id">
+        <option value="">Todos</option>
+        <option v-for="l in listas.locais" :key="l.id" :value="l.id">{{ l.nome }}</option>
+      </select>
+      <label>Atendente</label>
+      <select v-model="f.usuario_id">
+        <option value="">Todos</option>
+        <option v-for="u in listas.usuarios" :key="u.id" :value="u.id">{{ u.nome }}</option>
+      </select>
+      <button class="btn-buscar" @click="buscar">Buscar</button>
+      <button class="btn-pdf" @click="window.print()" v-if="d">⬇ PDF</button>
+    </div>
+
+    <!-- FILTROS ATIVOS -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px" v-if="filtrosAtivos.length">
+      <div class="filtro-ativo" v-for="fa in filtrosAtivos" :key="fa.campo">
+        {{ fa.label }} <span @click="limparFiltro(fa.campo)">×</span>
+      </div>
+    </div>
+
+    <div class="loading" v-if="load"><div class="spin"></div> Carregando...</div>
+    <div class="vazio" v-if="!load && !d" style="font-size:.9rem">📊 Selecione um período e clique em Buscar</div>
+
+    <template v-if="!load && d">
+      <div class="cards-grid">
+        <div class="card-stat azul"><div class="lbl">Total senhas</div><div class="val">{{ d.totais.total||0 }}</div><div class="sub">no período</div><div class="ic">🎫</div></div>
+        <div class="card-stat verde"><div class="lbl">Concluídos</div><div class="val">{{ d.totais.concluidos||0 }}</div><div class="sub">{{ pct(d.totais.concluidos,d.totais.total) }}% do total</div><div class="ic">✅</div></div>
+        <div class="card-stat amber"><div class="lbl">Espera média</div><div class="val">{{ ft(d.totais.avg_espera_seg) }}</div><div class="sub">totem → chamada</div><div class="ic">⏱</div></div>
+        <div class="card-stat roxo"><div class="lbl">Atend. médio</div><div class="val">{{ ft(d.totais.avg_atend_seg) }}</div><div class="sub">início → fim</div><div class="ic">🩺</div></div>
+        <div class="card-stat vermelho"><div class="lbl">Cancelados</div><div class="val">{{ d.totais.cancelados||0 }}</div><div class="sub">{{ pct(d.totais.cancelados,d.totais.total) }}% desistência</div><div class="ic">❌</div></div>
+        <div class="card-stat azul"><div class="lbl">Prioritários</div><div class="val">{{ d.totais.prioritarios||0 }}</div><div class="sub">{{ pct(d.totais.prioritarios,d.totais.total) }}% do total</div><div class="ic">⭐</div></div>
+      </div>
+
+      <div class="graficos-grid">
+        <div class="gc full"><h3>Senhas por dia</h3><div class="gw alto"><canvas ref="cDia"></canvas></div></div>
+        <div class="gc"><h3>Horário de pico</h3><div class="gw"><canvas ref="cHora"></canvas></div></div>
+        <div class="gc"><h3>Por setor</h3><div class="gw"><canvas ref="cSetor"></canvas></div></div>
+      </div>
+
+      <div class="tc">
+        <h3>Por setor</h3>
+        <table><thead><tr><th>Setor</th><th>Total</th><th>Concluídos</th><th>Cancelados</th><th>Prioritários</th><th>Espera média</th><th>Atend. médio</th></tr></thead>
+        <tbody>
+          <tr v-for="s in d.por_setor" :key="s.setor">
+            <td><strong>{{ s.prefixo }}</strong> {{ s.setor }}</td>
+            <td><span class="tag b">{{ s.total }}</span></td><td><span class="tag v">{{ s.concluidos }}</span></td>
+            <td><span class="tag r">{{ s.cancelados }}</span></td><td><span class="tag a">{{ s.prioritarios }}</span></td>
+            <td>{{ ft(s.avg_espera_seg) }}</td><td>{{ ft(s.avg_atend_seg) }}</td>
+          </tr>
+          <tr v-if="!d.por_setor.length"><td colspan="7" style="text-align:center;color:var(--text3);padding:20px">Sem dados</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="tc" v-if="d.por_local && d.por_local.length">
+        <h3>Por guichê / local</h3>
+        <table><thead><tr><th>Local</th><th>Total</th><th>Concluídos</th><th>Atend. médio</th></tr></thead>
+        <tbody>
+          <tr v-for="l in d.por_local" :key="l.local_nome">
+            <td>{{ l.local_nome }}</td>
+            <td><span class="tag b">{{ l.total }}</span></td>
+            <td><span class="tag v">{{ l.concluidos }}</span></td>
+            <td>{{ ft(l.avg_atend_seg) }}</td>
+          </tr>
+        </tbody></table>
+      </div>
+
+      <div class="tc" v-if="d.por_atendente.length">
+        <h3>Por atendente</h3>
+        <table><thead><tr><th>Atendente</th><th>Chamadas</th><th>Concluídos</th><th>Tempo médio</th></tr></thead>
+        <tbody>
+          <tr v-for="a in d.por_atendente" :key="a.atendente">
+            <td>{{ a.atendente }}</td>
+            <td><strong>{{ a.total_chamadas }}</strong></td>
+            <td><span class="tag v">{{ a.concluidos }}</span></td>
+            <td>{{ ft(a.avg_atend_seg) }}</td>
+          </tr>
+        </tbody></table>
+      </div>
+
+      <div class="tc">
+        <h3>Senhas por dia</h3>
+        <table><thead><tr><th>Data</th><th>Total</th><th>Concluídos</th><th>Cancelados</th><th>Taxa conclusão</th></tr></thead>
+        <tbody>
+          <tr v-for="dia in d.por_dia" :key="dia.dia">
+            <td>{{ fd(dia.dia) }}</td><td><strong>{{ dia.total }}</strong></td>
+            <td><span class="tag v">{{ dia.concluidos }}</span></td>
+            <td><span class="tag r">{{ dia.cancelados }}</span></td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="flex:1;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden">
+                  <div :style="{width:pct(dia.concluidos,dia.total)+'%',height:'100%',background:'var(--green)',borderRadius:'3px'}"></div>
+                </div>
+                <span style="font-size:.78rem;color:var(--text2);width:36px;text-align:right">{{ pct(dia.concluidos,dia.total) }}%</span>
+              </div>
+            </td>
+          </tr>
+          <tr v-if="!d.por_dia.length"><td colspan="5" style="text-align:center;color:var(--text3);padding:20px">Sem dados</td></tr>
+        </tbody></table>
+      </div>
+    </template>
+  </div>
+</template>
+</div>
+
+<script>
+const{createApp,nextTick}=Vue;
+const API=window.location.origin;
+let CH={};
+
+createApp({
+  data(){
+    const h=new Date().toISOString().slice(0,10);
+    const i=new Date(new Date().setDate(1)).toISOString().slice(0,10);
+    return{
+      usuario:null,token:null,
+      lf:{login:'',senha:'',load:false,erro:''},
+      f:{ini:i,fim:h,setor_id:'',local_id:'',usuario_id:''},
+      listas:{setores:[],locais:[],usuarios:[]},
+      d:null,load:false
+    };
+  },
+  computed:{
+    filtrosAtivos(){
+      const fa=[];
+      if(this.f.setor_id){const s=this.listas.setores.find(x=>x.id==this.f.setor_id);if(s)fa.push({campo:'setor_id',label:'Setor: '+s.nome});}
+      if(this.f.local_id){const l=this.listas.locais.find(x=>x.id==this.f.local_id);if(l)fa.push({campo:'local_id',label:'Guichê: '+l.nome});}
+      if(this.f.usuario_id){const u=this.listas.usuarios.find(x=>x.id==this.f.usuario_id);if(u)fa.push({campo:'usuario_id',label:'Atendente: '+u.nome});}
+      return fa;
+    }
+  },
+  methods:{
+    async req(path,opts={}){
+      const r=await fetch(API+path,{...opts,headers:{'Content-Type':'application/json','Authorization':'Bearer '+this.token,...(opts.headers||{})}});
+      if(!r.ok)throw await r.json();
+      return r.json();
+    },
+    async login(){
+      this.lf.load=true;this.lf.erro='';
+      try{
+        const r=await this.req('/api/auth/login',{method:'POST',body:JSON.stringify({login:this.lf.login,senha:this.lf.senha}),headers:{}});
+        this.token=r.token;this.usuario=r.usuario;
+        localStorage.setItem('sgarel_t',r.token);localStorage.setItem('sgarel_u',JSON.stringify(r.usuario));
+        await this.carregarListas();
+        this.buscar();
+      }catch(e){this.lf.erro=e.erro||'Erro';}finally{this.lf.load=false;}
+    },
+    sair(){localStorage.removeItem('sgarel_t');localStorage.removeItem('sgarel_u');this.usuario=null;this.token=null;this.d=null;},
+    async carregarListas(){
+      try{
+        const r=await this.req('/api/relatorios/filtros?unidade_id='+this.usuario.unidade_id);
+        this.listas=r;
+      }catch(e){}
+    },
+    limparFiltro(campo){this.f[campo]='';},
+    range(t){
+      const d=new Date(),fmt=x=>x.toISOString().slice(0,10);
+      if(t==='hoje'){this.f.ini=this.f.fim=fmt(d);}
+      else if(t==='semana'){const s=new Date(d);s.setDate(d.getDate()-6);this.f.ini=fmt(s);this.f.fim=fmt(d);}
+      else if(t==='mes'){this.f.ini=fmt(new Date(d.getFullYear(),d.getMonth(),1));this.f.fim=fmt(d);}
+      else if(t==='mes_ant'){const p=new Date(d.getFullYear(),d.getMonth()-1,1);this.f.ini=fmt(p);this.f.fim=fmt(new Date(d.getFullYear(),d.getMonth(),0));}
+      else if(t==='ano'){this.f.ini=d.getFullYear()+'-01-01';this.f.fim=fmt(d);}
+      this.buscar();
+    },
+    async buscar(){
+      this.load=true;this.d=null;Object.values(CH).forEach(c=>c?.destroy());CH={};
+      try{
+        let url='/api/relatorios/dashboard?unidade_id='+this.usuario.unidade_id+'&data_ini='+this.f.ini+'&data_fim='+this.f.fim;
+        if(this.f.setor_id)   url+='&setor_id='+this.f.setor_id;
+        if(this.f.local_id)   url+='&local_id='+this.f.local_id;
+        if(this.f.usuario_id) url+='&usuario_id='+this.f.usuario_id;
+        this.d=await this.req(url);
+        await nextTick();this.charts();
+      }catch(e){console.error(e);}finally{this.load=false;}
+    },
+    charts(){
+      const cores=['#2563eb','#16a34a','#d97706','#7c3aed','#dc2626','#0891b2'];
+      if(this.$refs.cDia&&this.d.por_dia.length){
+        CH.dia=new Chart(this.$refs.cDia,{type:'bar',data:{labels:this.d.por_dia.map(d=>this.fdc(d.dia)),datasets:[{label:'Total',data:this.d.por_dia.map(d=>d.total),backgroundColor:'#dbeafe',borderColor:'#2563eb',borderWidth:1.5,borderRadius:4},{label:'Concluídos',data:this.d.por_dia.map(d=>d.concluidos),backgroundColor:'#dcfce7',borderColor:'#16a34a',borderWidth:1.5,borderRadius:4},{label:'Cancelados',data:this.d.por_dia.map(d=>d.cancelados),backgroundColor:'#fee2e2',borderColor:'#dc2626',borderWidth:1.5,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{family:'DM Sans',size:11},boxWidth:12}}},scales:{x:{grid:{display:false}},y:{beginAtZero:true}}}});
+      }
+      if(this.$refs.cHora){
+        const hrs=Array.from({length:24},(_,i)=>i);
+        const vs=hrs.map(h=>{const f=this.d.por_hora.find(x=>x.hora===h);return f?f.total:0;});
+        CH.hora=new Chart(this.$refs.cHora,{type:'line',data:{labels:hrs.map(h=>h+'h'),datasets:[{label:'Senhas',data:vs,borderColor:'#7c3aed',backgroundColor:'rgba(124,58,237,.1)',borderWidth:2,pointRadius:3,pointBackgroundColor:'#7c3aed',fill:true,tension:.4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{beginAtZero:true}}}});
+      }
+      if(this.$refs.cSetor&&this.d.por_setor.length){
+        CH.setor=new Chart(this.$refs.cSetor,{type:'doughnut',data:{labels:this.d.por_setor.map(s=>s.setor),datasets:[{data:this.d.por_setor.map(s=>s.total),backgroundColor:cores.slice(0,this.d.por_setor.length),borderWidth:2,borderColor:'#fff'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{family:'DM Sans',size:11},boxWidth:12,padding:10}}}}});
+      }
+    },
+    ft(s){if(!s||s<0)return'—';s=Math.round(s);if(s<60)return s+'s';const m=Math.floor(s/60),r=s%60;return m+'min'+(r?' '+r+'s':'');},
+    fd(str){if(!str)return'—';return new Date(str+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});},
+    fdc(str){if(!str)return'';return new Date(str+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});},
+    pct(v,t){if(!t)return 0;return Math.round((v||0)/t*100);},
+  },
+  async mounted(){
+    // SSO: token via URL
+    const params=new URLSearchParams(location.search);
+    const tkUrl=params.get('token');
+    if(tkUrl){
+      this.token=tkUrl;
+      try{
+        const me=await this.req('/api/auth/login',{method:'POST',body:'{}',headers:{'Authorization':'Bearer '+tkUrl,'Content-Type':'application/json'}}).catch(()=>null);
+      }catch(e){}
+      // Decodificar JWT manualmente para pegar usuario
+      try{
+        const payload=JSON.parse(atob(tkUrl.split('.')[1]));
+        this.usuario={id:payload.id,nome:payload.login,perfil:payload.perfil,unidade_id:payload.unidade_id};
+        localStorage.setItem('sgarel_t',tkUrl);
+        localStorage.setItem('sgarel_u',JSON.stringify(this.usuario));
+        history.replaceState({},'','/relatorios/');
+        await this.carregarListas();
+        this.buscar();
+        return;
+      }catch(e){}
+    }
+    const t=localStorage.getItem('sgarel_t'),u=localStorage.getItem('sgarel_u');
+    if(t&&u){this.token=t;this.usuario=JSON.parse(u);await this.carregarListas();this.buscar();}
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

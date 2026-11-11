@@ -2,126 +2,416 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Painel de Senhas</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AtendFlex — Painel</title>
 <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js"></script>
 <style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{background:#0a1628;color:#fff;font-family:'Segoe UI',sans-serif;height:100vh;display:grid;grid-template-columns:1fr 340px;grid-template-rows:1fr 90px;overflow:hidden}
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0a1628;--surface:#0f1e38;--border:#1e3a5f;
+  --txt:#ffffff;--txt2:#94a3b8;--txt3:#475569;
+  --accent:#3b82f6;--accent2:#1e40af;
+  --prio:#f59e0b;
+}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',sans-serif;height:100vh;overflow:hidden;transition:background .5s}
 
-  /* ÁREA PRINCIPAL */
-  #main{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;gap:20px}
-  #chamada-label{font-size:1.1rem;letter-spacing:4px;text-transform:uppercase;color:#94a3b8}
-  #senha-codigo{font-size:9rem;font-weight:900;letter-spacing:8px;line-height:1;color:#fff;text-shadow:0 0 60px rgba(59,130,246,.6)}
-  #senha-codigo.prioritario{color:#fbbf24;text-shadow:0 0 60px rgba(251,191,36,.6)}
-  #senha-nome{font-size:2rem;color:#cbd5e1;margin-top:8px}
-  #senha-local{font-size:1.4rem;background:#1e40af;color:#bfdbfe;padding:10px 32px;border-radius:50px;margin-top:16px}
-  #sem-chamada{font-size:2rem;color:#475569;text-align:center}
+/* LAYOUT HORIZONTAL (padrão) */
+.layout-h{display:grid;grid-template-columns:1fr 320px;grid-template-rows:1fr 80px;height:100vh}
+.layout-h .main-content{grid-column:1;grid-row:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;gap:16px}
+.layout-h .main-footer{grid-column:1;grid-row:2;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:center}
+.layout-h .sidebar{grid-column:2;grid-row:1/3;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column}
 
-  /* ANIMAÇÃO DE ENTRADA */
-  @keyframes popIn{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
-  .pop{animation:popIn .4s cubic-bezier(.175,.885,.32,1.275)}
+/* LAYOUT VERTICAL */
+.layout-v{display:grid;grid-template-columns:1fr;grid-template-rows:180px 1fr 120px 100px;height:100vh}
+.layout-v .main-content{grid-row:2;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;gap:12px}
+.layout-v .main-footer{grid-row:4;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:center;padding:10px}
+.layout-v .sidebar{grid-row:1;background:var(--surface);border-bottom:1px solid var(--border);display:flex;flex-direction:row}
+.layout-v .sidebar-header{border-right:1px solid var(--border);width:160px;flex-shrink:0}
+.layout-v .sidebar-content{flex:1;overflow:hidden}
+.layout-v .sidebar-footer{grid-row:3;background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:center;padding:16px}
+.layout-v .sidebar-footer{display:none} /* no vertical o clima fica dentro da sidebar */
 
-  /* HISTÓRICO */
-  #sidebar{background:#0f1e38;border-left:1px solid #1e3a5f;display:flex;flex-direction:column}
-  #sidebar-header{padding:16px;border-bottom:1px solid #1e3a5f;font-size:.8rem;letter-spacing:3px;text-transform:uppercase;color:#64748b}
-  #historico{flex:1;overflow-y:auto;padding:8px}
-  .hist-item{padding:12px 16px;border-bottom:1px solid #1e3a5f;display:flex;justify-content:space-between;align-items:center}
-  .hist-item:first-child{background:#132040}
-  .hist-codigo{font-size:1.4rem;font-weight:700;color:#93c5fd}
-  .hist-codigo.prioritario{color:#fbbf24}
-  .hist-local{font-size:.8rem;color:#64748b}
+/* SIDEBAR horizontal */
+.layout-h .sidebar-header{height:160px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:center;padding:16px;flex-shrink:0}
+.layout-h .sidebar-content{flex:1;overflow-y:auto;padding:8px}
+.layout-h .sidebar-footer{border-top:1px solid var(--border);padding:14px;flex-shrink:0}
 
-  /* RODAPÉ */
-  #footer{background:#070e1c;border-top:1px solid #1e3a5f;display:flex;align-items:center;justify-content:center;font-size:1.6rem;letter-spacing:2px;color:#475569}
-  #footer-sidebar{background:#070e1c;border-top:1px solid #1e3a5f;border-left:1px solid #1e3a5f;display:flex;align-items:center;justify-content:center;font-size:.9rem;color:#334155}
+/* SENHA PRINCIPAL */
+.chamada-label{font-size:.9rem;letter-spacing:4px;text-transform:uppercase;color:var(--txt2)}
+.senha-codigo{font-size:clamp(5rem,15vw,10rem);font-weight:900;letter-spacing:8px;line-height:1;color:var(--txt);text-shadow:0 0 60px rgba(59,130,246,.5)}
+.senha-codigo.prio{color:var(--prio);text-shadow:0 0 60px rgba(245,158,11,.5)}
+.senha-setor{font-size:clamp(1rem,3vw,1.8rem);color:var(--txt2)}
+.senha-local{font-size:clamp(.9rem,2vw,1.4rem);background:var(--accent2);color:#bfdbfe;padding:8px 28px;border-radius:50px;margin-top:8px}
+.aguardando{font-size:clamp(1rem,2.5vw,1.8rem);color:var(--txt3)}
 
-  #relogio{font-variant-numeric:tabular-nums}
+@keyframes popIn{from{transform:scale(.5);opacity:0}to{transform:scale(1);opacity:1}}
+.pop{animation:popIn .4s cubic-bezier(.175,.885,.32,1.275)}
+
+/* HISTÓRICO */
+.hist-label{font-size:.7rem;letter-spacing:3px;text-transform:uppercase;color:var(--txt3);padding:12px 16px;border-bottom:1px solid var(--border)}
+.hist-item{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.hist-item:first-child{background:rgba(59,130,246,.08)}
+.hist-cod{font-size:1.8rem;font-weight:700;color:var(--accent)}
+.hist-cod.prio{color:var(--prio)}
+.hist-loc{font-size:.9rem;color:var(--txt3)}
+
+/* LOGO */
+.logo-wrap{display:flex;align-items:center;justify-content:center;width:100%;height:100%}
+.logo-wrap img{max-width:100%;max-height:100%;object-fit:contain}
+.logo-wrap .nome-clinica{font-size:1rem;font-weight:700;color:var(--txt);text-align:center;padding:8px}
+
+/* CLIMA */
+.clima-wrap{display:flex;flex-direction:column;gap:6px}
+.clima-cidade{font-size:.75rem;color:var(--txt3);text-transform:uppercase;letter-spacing:1px}
+.clima-temp{font-size:2rem;font-weight:700;color:var(--txt)}
+.clima-desc{font-size:.8rem;color:var(--txt2)}
+.clima-extras{display:flex;gap:12px;font-size:.75rem;color:var(--txt3);margin-top:4px}
+.clima-icon{font-size:2rem}
+
+/* RELÓGIO */
+.relogio{font-size:clamp(1.2rem,3vw,2rem);letter-spacing:2px;color:var(--txt3);font-variant-numeric:tabular-nums}
+
+/* BOTÃO ORIENTAÇÃO */
+.btn-orientacao{position:fixed;bottom:12px;right:12px;background:rgba(255,255,255,.1);border:1px solid var(--border);color:var(--txt3);padding:6px 12px;border-radius:8px;cursor:pointer;font-size:.75rem;z-index:100;backdrop-filter:blur(4px)}
+.btn-orientacao:hover{background:rgba(255,255,255,.2)}
+
+/* TEMAS */
+body.tema-claro{--bg:#f1f5f9;--surface:#ffffff;--border:#e2e8f0;--txt:#1e293b;--txt2:#64748b;--txt3:#94a3b8;--accent:#2563eb;--accent2:#dbeafe}
+body.tema-claro .senha-codigo{text-shadow:none}
+body.tema-azul{--bg:#0f172a;--surface:#1e3a5f;--border:#2563eb33;--accent:#60a5fa}
+body.tema-verde{--bg:#0a1f0a;--surface:#0f2e0f;--border:#166534;--accent:#4ade80;--prio:#fbbf24}
+
+/* FUNDO PERSONALIZADO */
+.fundo-img{background-size:cover;background-position:center;background-repeat:no-repeat}
+.fundo-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:0;pointer-events:none}
+.layout-h,.layout-v{position:relative;z-index:1}
+
+video#bg-video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;opacity:.3}
 </style>
 </head>
-<body>
+<body id="body">
+<video id="bg-video" autoplay loop muted style="display:none"></video>
+<div id="fundo-overlay" class="fundo-overlay" style="display:none"></div>
 
-<div id="main">
-  <div id="sem-chamada">Aguardando chamada...</div>
-  <div id="chamada-container" style="display:none;text-align:center">
-    <div id="chamada-label">Senha chamada</div>
-    <div id="senha-codigo" class="pop"></div>
-    <div id="senha-nome"></div>
-    <div id="senha-local"></div>
+<div id="layout" class="layout-h">
+  <!-- SIDEBAR -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header" id="sidebar-header">
+      <div class="logo-wrap" id="logo-wrap">
+        <span class="nome-clinica" id="nome-clinica">AtendFlex</span>
+      </div>
+    </div>
+    <div class="sidebar-content">
+      <div class="hist-label">Últimas chamadas</div>
+      <div id="historico"></div>
+    </div>
+    <div class="sidebar-footer" id="sidebar-footer">
+      <div class="clima-wrap" id="clima-wrap">
+        <div class="clima-cidade" id="clima-cidade">—</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="clima-icon" id="clima-icon">🌤</span>
+          <span class="clima-temp" id="clima-temp">—°C</span>
+        </div>
+        <div class="clima-desc" id="clima-desc">Carregando...</div>
+        <div class="clima-extras">
+          <span id="clima-umid"></span>
+          <span id="clima-vento"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main-content" id="main-content">
+    <div class="aguardando" id="aguardando-msg">Aguardando chamada...</div>
+    <div id="chamada-container" style="display:none;text-align:center;display:none;flex-direction:column;align-items:center;gap:12px">
+      <div class="chamada-label">Senha chamada</div>
+      <div class="senha-codigo pop" id="senha-codigo"></div>
+      <div class="senha-setor" id="senha-setor"></div>
+      <div class="senha-local" id="senha-local" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- FOOTER MAIN -->
+  <div class="main-footer" id="main-footer">
+    <span class="relogio" id="relogio"></span>
   </div>
 </div>
 
-<div id="sidebar">
-  <div id="sidebar-header">Últimas chamadas</div>
-  <div id="historico"></div>
-</div>
-
-<div id="footer"><span id="relogio"></span></div>
-<div id="footer-sidebar">Sistema de Senhas</div>
+<button class="btn-orientacao" id="btn-orient" onclick="toggleOrientacao()">⟳ Girar</button>
+<button class="btn-orientacao" id="btn-som" onclick="ativarSom()" style="bottom:48px;background:rgba(239,68,68,.3);border-color:#ef4444;color:#fca5a5">🔇 Ativar Som</button>
 
 <script>
-const API_URL     = window.__ENV__?.API_URL || window.location.origin.replace(/:\d+/,'') + ':3001';
-const UNIDADE_ID  = new URLSearchParams(location.search).get('unidade') || 1;
-const MAX_HIST    = 8;
-const historico   = [];
+const API_URL    = window.location.origin;
+const UNIDADE_ID = parseInt(new URLSearchParams(location.search).get('unidade') || 1);
+const MAX_HIST   = 8;
+const historico  = [];
+let layoutAtual  = 'h';
+let cfg          = {};
 
-const elCodigo    = document.getElementById('senha-codigo');
-const elNome      = document.getElementById('senha-nome');
-const elLocal     = document.getElementById('senha-local');
-const elContainer = document.getElementById('chamada-container');
-const elSem       = document.getElementById('sem-chamada');
-const elHist      = document.getElementById('historico');
-const elRel       = document.getElementById('relogio');
-
-// Relógio
+// ── RELÓGIO ──────────────────────────────────────────────────────
 setInterval(() => {
-  elRel.textContent = new Date().toLocaleTimeString('pt-BR');
+  document.getElementById('relogio').textContent = new Date().toLocaleTimeString('pt-BR');
 }, 1000);
 
-// Socket.io
+// ── CARREGAR CONFIG ───────────────────────────────────────────────
+async function carregarConfig() {
+  try {
+    const r = await fetch(`${API_URL}/api/config?unidade_id=${UNIDADE_ID}`);
+    if (!r.ok) return;
+    cfg = await r.json() || {};
+
+    // Nome/logo
+    if (cfg.logo_base64) {
+      document.getElementById('logo-wrap').innerHTML =
+        `<img src="${cfg.logo_base64}" alt="Logo">`;
+    } else if (cfg.clinica_nome) {
+      document.getElementById('nome-clinica').textContent = cfg.clinica_nome;
+    }
+
+    // Tema
+    const body = document.getElementById('body');
+    body.className = '';
+    if (cfg.tema && cfg.tema !== 'escuro') body.classList.add('tema-' + cfg.tema);
+
+    // Fundo
+    if (cfg.fundo_tipo === 'imagem' && cfg.fundo_valor) {
+      body.style.backgroundImage = `url(${cfg.fundo_valor})`;
+      body.classList.add('fundo-img');
+      document.getElementById('fundo-overlay').style.display = 'block';
+    } else if (cfg.fundo_tipo === 'video' && cfg.fundo_valor) {
+      const v = document.getElementById('bg-video');
+      v.src = cfg.fundo_valor;
+      v.style.display = 'block';
+      document.getElementById('fundo-overlay').style.display = 'block';
+    } else if (cfg.fundo_tipo === 'cor' && cfg.fundo_valor) {
+      body.style.background = cfg.fundo_valor;
+    }
+
+    // Layout salvo
+    if (cfg.painel_layout === 'vertical') aplicarVertical();
+    else aplicarHorizontal();
+
+    // Clima
+    if (cfg.clima_cidade) carregarClima(cfg.clima_cidade);
+
+  } catch(e) { console.error('Config:', e); }
+}
+
+// ── CLIMA HG BRASIL ───────────────────────────────────────────────
+const climaIcones = {
+  storm:'⛈', snow:'🌨', hail:'🌧', rain:'🌧', fog:'🌫',
+  drizzle:'🌦', 'clear day':'☀️', 'clear night':'🌙',
+  'cloud':'☁️', 'cloudly day':'⛅', 'cloudly night':'🌤',
+  default:'🌤'
+};
+async function carregarClima(cidade) {
+  try {
+    // 1. Geocodificar cidade -> lat/lon
+    const geo = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cidade)}&count=1&language=pt&format=json`);
+    const geoData = await geo.json();
+    if (!geoData.results?.length) { document.getElementById('clima-desc').textContent = 'Cidade não encontrada'; return; }
+    const { latitude, longitude, name } = geoData.results[0];
+
+    // 2. Buscar clima atual
+    const wUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=America/Sao_Paulo&forecast_days=1`;
+    const w = await fetch(wUrl);
+    const wData = await w.json();
+    const cur = wData.current;
+
+    // WMO weather codes -> emoji
+    const code = cur.weather_code;
+    let icon = '🌤';
+    if (code === 0) icon = '☀️';
+    else if (code <= 2) icon = '⛅';
+    else if (code <= 3) icon = '☁️';
+    else if (code <= 48) icon = '🌫';
+    else if (code <= 57) icon = '🌦';
+    else if (code <= 67) icon = '🌧';
+    else if (code <= 77) icon = '🌨';
+    else if (code <= 82) icon = '🌧';
+    else if (code <= 86) icon = '🌨';
+    else if (code <= 99) icon = '⛈';
+
+    document.getElementById('clima-cidade').textContent = name.toUpperCase();
+    document.getElementById('clima-temp').textContent   = Math.round(cur.temperature_2m) + '°C';
+    document.getElementById('clima-icon').textContent   = icon;
+    document.getElementById('clima-umid').textContent   = '💧 ' + cur.relative_humidity_2m + '%';
+    document.getElementById('clima-vento').textContent  = '💨 ' + Math.round(cur.wind_speed_10m) + ' km/h';
+    document.getElementById('clima-desc').textContent   = new Date().toLocaleDateString('pt-BR', {weekday:'long', day:'2-digit', month:'long'});
+
+    setTimeout(() => carregarClima(cidade), 10 * 60 * 1000);
+  } catch(e) { document.getElementById('clima-desc').textContent = 'Clima indisponível'; }
+}
+
+// ── SOCKET.IO ─────────────────────────────────────────────────────
 const socket = io(API_URL);
 socket.emit('join:unidade', { unidade_id: UNIDADE_ID });
-
 socket.on('senha:chamada', senha => {
   mostrarSenha(senha);
-  vocalizar(senha);
   adicionarHistorico(senha);
+  vocalizar(senha);
 });
 
 function mostrarSenha(s) {
-  elSem.style.display = 'none';
-  elContainer.style.display = 'block';
-  elCodigo.className = 'pop ' + (s.tipo === 'prioritario' ? 'prioritario' : '');
-  elCodigo.textContent = s.codigo;
-  elNome.textContent   = s.setor_nome || '';
-  elLocal.textContent  = s.local_nome ? `Dirija-se ao ${s.local_nome}` : '';
-  // re-trigger animation
-  void elCodigo.offsetWidth;
-  elCodigo.className = 'pop ' + (s.tipo === 'prioritario' ? 'prioritario' : '');
+  document.getElementById('aguardando-msg').style.display = 'none';
+  const c = document.getElementById('chamada-container');
+  c.style.display = 'flex';
+  const el = document.getElementById('senha-codigo');
+  el.className = 'senha-codigo pop' + (s.tipo==='prioritario'?' prio':'');
+  el.textContent = s.codigo;
+  document.getElementById('senha-setor').textContent = s.setor_nome || '';
+  const loc = document.getElementById('senha-local');
+  if (s.local_nome) { loc.textContent = 'Dirija-se ao ' + s.local_nome; loc.style.display='block'; }
+  else loc.style.display = 'none';
+  void el.offsetWidth;
+  el.className = 'senha-codigo pop' + (s.tipo==='prioritario'?' prio':'');
 }
 
 function adicionarHistorico(s) {
   historico.unshift(s);
   if (historico.length > MAX_HIST) historico.pop();
-  elHist.innerHTML = historico.map((h,i) => `
-    <div class="hist-item">
-      <span class="hist-codigo ${h.tipo==='prioritario'?'prioritario':''}">${h.codigo}</span>
-      <span class="hist-local">${h.local_nome||''}</span>
-    </div>`).join('');
+  document.getElementById('historico').innerHTML = historico.map(h =>
+    `<div class="hist-item">
+      <span class="hist-cod${h.tipo==='prioritario'?' prio':''}">${h.codigo}</span>
+      <span class="hist-loc">${h.local_nome||''}</span>
+    </div>`
+  ).join('');
 }
 
-function vocalizar(s) {
-  if (!window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-  const falar = txt => {
-    const u = new SpeechSynthesisUtterance(txt);
-    u.lang = 'pt-BR'; u.rate = 0.9; u.pitch = 1;
-    window.speechSynthesis.speak(u);
-  };
-  // Falar 2x com pausa
-  falar(`Senha ${s.codigo.split('').join(' ')}, ${s.setor_nome}, ${s.local_nome || ''}`);
-  setTimeout(() => falar(`Senha ${s.codigo.split('').join(' ')}, ${s.setor_nome}, ${s.local_nome || ''}`), 3000);
+let audioCtx = null;
+let somAtivo  = false;
+
+function ativarSom() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  // Tocar silêncio para desbloquear
+  const buf = audioCtx.createBuffer(1,1,22050);
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  src.connect(audioCtx.destination);
+  src.start(0);
+  audioCtx.resume().then(() => {
+    somAtivo = true;
+    const btn = document.getElementById('btn-som');
+    btn.textContent = '🔊 Som Ativo';
+    btn.style.background = 'rgba(34,197,94,.3)';
+    btn.style.borderColor = '#22c55e';
+    btn.style.color = '#86efac';
+    // Testar som
+    bingBong();
+  });
 }
+
+function bingBong() {
+  return new Promise(resolve => {
+    try {
+      if (!somAtivo || !audioCtx) { resolve(); return; }
+      const ctx = audioCtx;
+      const notas = [
+        { freq: 523.25, dur: 0.18, inicio: 0.0  },  // C5
+        { freq: 659.25, dur: 0.18, inicio: 0.2  },  // E5
+        { freq: 783.99, dur: 0.18, inicio: 0.4  },  // G5
+        { freq: 1046.5, dur: 0.5,  inicio: 0.6  },  // C6
+      ];
+      let fim = 0;
+      notas.forEach(({ freq, dur, inicio }) => {
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + inicio);
+        gain.gain.setValueAtTime(0, ctx.currentTime + inicio);
+        gain.gain.linearRampToValueAtTime(0.4, ctx.currentTime + inicio + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + inicio + dur);
+        osc.start(ctx.currentTime + inicio);
+        osc.stop(ctx.currentTime + inicio + dur);
+        fim = Math.max(fim, inicio + dur);
+      });
+      setTimeout(resolve, (fim + 0.3) * 1000);
+    } catch(e) { resolve(); }
+  });
+}
+
+async function vocalizar(s) {
+  if (!somAtivo || !window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+
+  // Toca bing bong primeiro, depois fala
+  await bingBong();
+
+  const falar = (txt) => new Promise(resolve => {
+    const u = new SpeechSynthesisUtterance(txt);
+    u.lang    = 'pt-BR';
+    u.rate    = 0.85;
+    u.pitch   = 1.0;
+    u.volume  = 1.0;
+    // Escolher voz feminina brasileira se disponível
+    const vozes = window.speechSynthesis.getVoices();
+    const voz = vozes.find(v => v.lang === 'pt-BR' && v.name.toLowerCase().includes('female'))
+             || vozes.find(v => v.lang === 'pt-BR')
+             || vozes.find(v => v.lang.startsWith('pt'));
+    if (voz) u.voice = voz;
+    u.onend = resolve;
+    u.onerror = resolve;
+    window.speechSynthesis.speak(u);
+  });
+
+  // Montar texto conforme configuração
+  const vo     = (cfg.voz_opcoes||'codigo,setor,local').split(',');
+  const partes = [];
+
+  // Parte da senha — sempre começa com "Senha"
+  const parteSenha = [];
+  if (vo.includes('sigla'))  parteSenha.push(s.prefixo.split('').join(' '));
+  if (vo.includes('numero')) parteSenha.push(String(s.numero));
+  if (vo.includes('codigo')) parteSenha.push(s.codigo.split('').join(' '));
+
+  if (parteSenha.length > 0) partes.push('Senha ' + parteSenha.join(' '));
+
+  // Setor e local
+  if (vo.includes('setor') && s.setor_nome)  partes.push(s.setor_nome);
+  if (vo.includes('local') && s.local_nome)  partes.push('Dirija-se ao ' + s.local_nome);
+
+  const txtCompleto = partes.filter(Boolean).join('. ');
+
+  await falar(txtCompleto);
+
+  // Pausa e repete uma vez
+  await new Promise(r => setTimeout(r, 1200));
+  await bingBong();
+  await new Promise(r => setTimeout(r, 400));
+  await falar(txtCompleto);
+}
+
+// ── ORIENTAÇÃO ───────────────────────────────────────────────────
+function aplicarHorizontal() {
+  layoutAtual = 'h';
+  const l = document.getElementById('layout');
+  l.className = 'layout-h';
+  const sb = document.getElementById('sidebar');
+  // Restaurar estrutura sidebar vertical
+  sb.style.flexDirection = '';
+  document.getElementById('sidebar-header').style.width = '';
+  document.getElementById('sidebar-header').style.height = '160px';
+  document.getElementById('btn-orient').textContent = '⟳ Vertical';
+}
+
+function aplicarVertical() {
+  layoutAtual = 'v';
+  const l = document.getElementById('layout');
+  l.className = 'layout-v';
+  document.getElementById('sidebar-header').style.height = '';
+  document.getElementById('btn-orient').textContent = '⟳ Horizontal';
+}
+
+function toggleOrientacao() {
+  if (layoutAtual === 'h') aplicarVertical();
+  else aplicarHorizontal();
+}
+
+// ── INIT ─────────────────────────────────────────────────────────
+carregarConfig();
 </script>
 </body>
 </html>

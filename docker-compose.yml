@@ -13,6 +13,7 @@ services:
       - painel
       - totem
       - atendimento
+      - relatorios
     networks:
       - sga-net
 
@@ -62,6 +63,13 @@ services:
     networks:
       - sga-net
 
+  relatorios:
+    build: ./relatorios
+    container_name: sga-relatorios
+    restart: always
+    networks:
+      - sga-net
+
   mysqldb:
     image: mysql:8.0
     container_name: sga-mysql
@@ -77,9 +85,10 @@ services:
       - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD","mysqladmin","ping","-h","localhost","-u","root","-pSGA_r00t_P4ssW0rd"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
     networks:
       - sga-net
 
@@ -94,7 +103,7 @@ services:
       test: ["CMD","redis-cli","ping"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
     networks:
       - sga-net
 

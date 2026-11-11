@@ -94,4 +94,15 @@ INSERT INTO locais (unidade_id, nome) VALUES
 
 -- senha: Admin@123
 INSERT INTO usuarios (unidade_id, nome, login, senha_hash, perfil) VALUES
-  (1, 'Administrador', 'admin', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin_global');
+  (1, 'Administrador', 'admin', '$2b$10$dJGFX4uuH4VpJYH/6vsDuOSYMZbN1R809X4vAzuI9KieCh11s.pkK', 'admin_global');
+
+CREATE TABLE IF NOT EXISTS configuracoes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  unidade_id INT NOT NULL UNIQUE,
+  clinica_nome VARCHAR(100) DEFAULT 'Clinica',
+  papel ENUM('58mm','80mm') DEFAULT '80mm',
+  impressao ENUM('dialogo','botao','sem') DEFAULT 'dialogo',
+  FOREIGN KEY (unidade_id) REFERENCES unidades(id)
+);
+INSERT IGNORE INTO configuracoes (unidade_id, clinica_nome, papel, impressao)
+VALUES (1, 'Clinica Principal', '80mm', 'dialogo');

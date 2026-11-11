@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Atendimento — SGA</title>
+<title>Atendimento — AtendFlex</title>
 <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js"></script>
 <style>
@@ -93,7 +93,7 @@ nav .nav-item.ativo{opacity:1;background:rgba(255,255,255,.2)}
   <!-- LOGIN -->
   <div id="login-wrap" v-if="!usuario">
     <div class="login-card">
-      <h2>SGA — Atendimento</h2>
+      <h2>AtendFlex — Atendimento</h2>
       <div class="campo">
         <label>Login</label>
         <input v-model="loginForm.login" type="text" placeholder="seu.login" @keyup.enter="fazerLogin">
@@ -112,7 +112,7 @@ nav .nav-item.ativo{opacity:1;background:rgba(255,255,255,.2)}
   <!-- APP PRINCIPAL -->
   <template v-if="usuario">
     <nav>
-      <h1>SGA</h1>
+      <h1>AtendFlex</h1>
       <span
         v-if="podeAtender"
         class="nav-item" :class="{ativo: aba==='atendimento'}"
@@ -126,6 +126,7 @@ nav .nav-item.ativo{opacity:1;background:rgba(255,255,255,.2)}
         @click="aba='admin';carregarAdmin()">
         Administrativo
       </span>
+      <span class="nav-item" @click="abrirRelatorios" style="cursor:pointer">📊 Relatórios</span>
       <span style="font-size:.85rem;opacity:.7">{{ usuario.nome }}</span>
       <span class="nav-item" @click="sair">Sair</span>
     </nav>
@@ -209,6 +210,7 @@ nav .nav-item.ativo{opacity:1;background:rgba(255,255,255,.2)}
           <div class="aba" :class="{ativa:abaAdmin==='setores'}" @click="abaAdmin='setores'">Setores</div>
           <div class="aba" :class="{ativa:abaAdmin==='locais'}" @click="abaAdmin='locais'">Locais</div>
           <div class="aba" :class="{ativa:abaAdmin==='usuarios'}" @click="abaAdmin='usuarios'">Usuários</div>
+          <div class="aba" :class="{ativa:abaAdmin==='config'}" @click="abaAdmin='config';carregarConfig()">Configurações</div>
         </div>
 
         <!-- SETORES -->
@@ -223,9 +225,16 @@ nav .nav-item.ativo{opacity:1;background:rgba(255,255,255,.2)}
             <thead><tr><th>ID</th><th>Nome</th><th>Prefixo</th><th>Ordem</th><th>Ativo</th><th></th></tr></thead>
             <tbody>
               <tr v-for="s in admin.setores" :key="s.id">
-                <td>{{ s.id }}</td><td>{{ s.nome }}</td><td>{{ s.prefixo }}</td><td>{{ s.ordem }}</td>
-                <td><span :style="s.ativo?'color:#22c55e':'color:#94a3b8'">{{ s.ativo ? 'Sim' : 'Não' }}</span></td>
-                <td><button class="btn btn-vermelho" @click="deletarSetor(s.id)">Remover</button></td>
+                <td>{{ s.id }}</td>
+                <td><span v-if="editando.setor!==s.id">{{ s.nome }}</span><input v-else v-model="s.nome" style="width:100px"></td>
+                <td><span v-if="editando.setor!==s.id">{{ s.prefixo }}</span><input v-else v-model="s.prefixo" style="width:50px"></td>
+                <td><span v-if="editando.setor!==s.id">{{ s.ordem }}</span><input v-else v-model.number="s.ordem" type="number" style="width:50px"></td>
+                <td><span :style="s.ativo?'color:#22c55e':'color:#94a3b8'">{{ s.ativo ? 'Ativo' : 'Inativo' }}</span></td>
+                <td style="display:flex;gap:4px;flex-wrap:wrap">
+                  <button v-if="editando.setor!==s.id" class="btn btn-cinza" @click="editando.setor=s.id">Editar</button>
+                  <button v-else class="btn btn-azul" @click="salvarEdicaoSetor(s)">Salvar</button>
+                  <button class="btn" :class="s.ativo?'btn-amarelo':'btn-verde'" @click="toggleSetor(s)">{{ s.ativo ? 'Desativar' : 'Ativar' }}</button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -241,9 +250,14 @@ nav .nav-item.ativo{opacity:1;background:rgba(255,255,255,.2)}
             <thead><tr><th>ID</th><th>Nome</th><th>Ativo</th><th></th></tr></thead>
             <tbody>
               <tr v-for="l in admin.locais" :key="l.id">
-                <td>{{ l.id }}</td><td>{{ l.nome }}</td>
-                <td><span :style="l.ativo?'color:#22c55e':'color:#94a3b8'">{{ l.ativo ? 'Sim' : 'Não' }}</span></td>
-                <td><button class="btn btn-vermelho" @click="deletarLocal(l.id)">Remover</button></td>
+                <td>{{ l.id }}</td>
+                <td><span v-if="editando.local!==l.id">{{ l.nome }}</span><input v-else v-model="l.nome" style="width:140px"></td>
+                <td><span :style="l.ativo?'color:#22c55e':'color:#94a3b8'">{{ l.ativo ? 'Ativo' : 'Inativo' }}</span></td>
+                <td style="display:flex;gap:4px;flex-wrap:wrap">
+                  <button v-if="editando.local!==l.id" class="btn btn-cinza" @click="editando.local=l.id">Editar</button>
+                  <button v-else class="btn btn-azul" @click="salvarEdicaoLocal(l)">Salvar</button>
+                  <button class="btn" :class="l.ativo?'btn-amarelo':'btn-verde'" @click="toggleLocal(l)">{{ l.ativo ? 'Desativar' : 'Ativar' }}</button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -268,14 +282,135 @@ nav .nav-item.ativo{opacity:1;background:rgba(255,255,255,.2)}
             <button class="btn btn-azul" @click="salvarUsuario">Adicionar</button>
           </div>
           <table class="tabela">
-            <thead><tr><th>Nome</th><th>Login</th><th>Perfil</th><th>Ativo</th></tr></thead>
+            <thead><tr><th>Nome</th><th>Login</th><th>Perfil</th><th>Senha</th><th>Ativo</th><th></th></tr></thead>
             <tbody>
               <tr v-for="u in admin.usuarios" :key="u.id">
-                <td>{{ u.nome }}</td><td>{{ u.login }}</td><td>{{ u.perfil }}</td>
-                <td><span :style="u.ativo?'color:#22c55e':'color:#94a3b8'">{{ u.ativo ? 'Sim' : 'Não' }}</span></td>
+                <td><span v-if="editando.usuario!==u.id">{{ u.nome }}</span><input v-else v-model="u.nome" style="width:120px"></td>
+                <td>{{ u.login }}</td>
+                <td>
+                  <span v-if="editando.usuario!==u.id">{{ u.perfil }}</span>
+                  <select v-else v-model="u.perfil">
+                    <option value="admin_global">Admin global</option>
+                    <option value="admin_unidade">Admin unidade</option>
+                    <option value="atendente">Atendente</option>
+                    <option value="medico">Médico</option>
+                    <option value="triagem">Triagem</option>
+                    <option value="relatorios">Relatórios</option>
+                  </select>
+                </td>
+                <td><input v-if="editando.usuario===u.id" v-model="u.nova_senha" type="password" placeholder="Nova senha" style="width:110px"></td>
+                <td><span :style="u.ativo?'color:#22c55e':'color:#94a3b8'">{{ u.ativo ? 'Ativo' : 'Inativo' }}</span></td>
+                <td style="display:flex;gap:4px;flex-wrap:wrap">
+                  <button v-if="editando.usuario!==u.id" class="btn btn-cinza" @click="editando.usuario=u.id;u.nova_senha=''">Editar</button>
+                  <button v-else class="btn btn-azul" @click="salvarEdicaoUsuario(u)">Salvar</button>
+                  <button class="btn" :class="u.ativo?'btn-amarelo':'btn-verde'" @click="toggleUsuario(u)">{{ u.ativo ? 'Desativar' : 'Ativar' }}</button>
+                </td>
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <div v-if="abaAdmin==='config'">
+          <div class="card" style="max-width:600px">
+            <h3 style="margin-bottom:20px;font-size:1rem;color:#1e293b">Configurações</h3>
+
+            <p style="font-size:.8rem;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:12px">Geral</p>
+            <div class="form-grupo" style="margin-bottom:12px">
+              <label>Nome da clínica</label>
+              <input v-model="config.clinica_nome" placeholder="Nome da clínica">
+            </div>
+            <div class="form-grupo" style="margin-bottom:20px">
+              <label>Logo (PNG/JPG)</label>
+              <input type="file" accept="image/*" @change="carregarLogo" style="font-size:.85rem;padding:6px">
+              <div v-if="config.logo_base64" style="margin-top:8px;display:flex;align-items:center;gap:10px">
+                <img :src="config.logo_base64" style="max-height:60px;border-radius:6px;border:1px solid #e2e8f0">
+                <span style="font-size:.8rem;color:#ef4444;cursor:pointer" @click="config.logo_base64=''">Remover</span>
+              </div>
+            </div>
+
+            <p style="font-size:.8rem;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:12px;border-top:1px solid #f1f5f9;padding-top:16px">Painel TV</p>
+            <div class="form-grupo" style="margin-bottom:12px">
+              <label>Tema</label>
+              <select v-model="config.tema">
+                <option value="escuro">Escuro</option>
+                <option value="claro">Claro</option>
+                <option value="azul">Azul profundo</option>
+                <option value="verde">Verde</option>
+              </select>
+            </div>
+            <div class="form-grupo" style="margin-bottom:12px">
+              <label>Tipo de fundo</label>
+              <select v-model="config.fundo_tipo">
+                <option value="cor">Cor solida</option>
+                <option value="imagem">URL de imagem</option>
+                <option value="video">URL de video</option>
+              </select>
+            </div>
+            <div class="form-grupo" style="margin-bottom:12px" v-if="config.fundo_tipo=='cor'">
+              <label>Cor de fundo</label>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input type="color" v-model="config.fundo_valor" style="width:48px;height:36px;padding:2px;border-radius:6px;cursor:pointer;border:1px solid #e2e8f0">
+                <input v-model="config.fundo_valor" placeholder="#0a1628" style="flex:1">
+              </div>
+            </div>
+            <div class="form-grupo" style="margin-bottom:12px" v-if="config.fundo_tipo!='cor'">
+              <label>URL do fundo</label>
+              <input v-model="config.fundo_valor" placeholder="https://...">
+            </div>
+            <div class="form-grupo" style="margin-bottom:20px">
+              <label>Cidade para clima e tempo</label>
+              <input v-model="config.clima_cidade" placeholder="Ex: Sao Paulo">
+            </div>
+
+            <p style="font-size:.8rem;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:12px;border-top:1px solid #f1f5f9;padding-top:16px">Impressao</p>
+            <div class="form-grupo" style="margin-bottom:12px">
+              <label>Tamanho do papel</label>
+              <div style="display:flex;gap:8px">
+                <label style="display:flex;align-items:center;gap:6px;padding:8px 16px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;flex:1">
+                  <input type="radio" v-model="config.papel" value="58mm"> 58mm
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;padding:8px 16px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;flex:1">
+                  <input type="radio" v-model="config.papel" value="80mm"> 80mm
+                </label>
+              </div>
+            </div>
+            <div class="form-grupo" style="margin-bottom:20px">
+              <label>Modo de impressao</label>
+              <select v-model="config.impressao">
+                <option value="dialogo">Abrir dialogo automaticamente</option>
+                <option value="botao">Mostrar botao Imprimir</option>
+                <option value="sem">Sem impressao</option>
+              </select>
+            </div>
+
+            <p style="font-size:.8rem;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:12px;border-top:1px solid #f1f5f9;padding-top:16px">Vocalização do Painel</p>
+            <div style="margin-bottom:8px;font-size:.85rem;color:#475569">O que será anunciado ao chamar uma senha:</div>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px">
+                <input type="checkbox" v-model="config.voz_sigla"> 
+                <div><div style="font-weight:500;font-size:.9rem">Sigla da senha</div><div style="font-size:.8rem;color:#64748b">Ex: "F I" (letras do prefixo)</div></div>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px">
+                <input type="checkbox" v-model="config.voz_numero">
+                <div><div style="font-weight:500;font-size:.9rem">Número da senha</div><div style="font-size:.8rem;color:#64748b">Ex: "zero zero um"</div></div>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px">
+                <input type="checkbox" v-model="config.voz_codigo">
+                <div><div style="font-weight:500;font-size:.9rem">Código completo</div><div style="font-size:.8rem;color:#64748b">Ex: "F I zero zero um" (sigla + número juntos)</div></div>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px">
+                <input type="checkbox" v-model="config.voz_setor">
+                <div><div style="font-weight:500;font-size:.9rem">Nome do setor</div><div style="font-size:.8rem;color:#64748b">Ex: "Faturamento"</div></div>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px">
+                <input type="checkbox" v-model="config.voz_local">
+                <div><div style="font-weight:500;font-size:.9rem">Local de atendimento</div><div style="font-size:.8rem;color:#64748b">Ex: "Dirija-se ao Guichê 01"</div></div>
+              </label>
+            </div>
+
+            <button class="btn btn-azul" @click="salvarConfig" style="width:100%;padding:12px">Salvar configuracoes</button>
+            <div v-if="config.salvo" style="color:#22c55e;text-align:center;margin-top:8px;font-size:.9rem">Salvo!</div>
+          </div>
         </div>
 
       </div>
@@ -285,7 +420,7 @@ nav .nav-item.ativo{opacity:1;background:rgba(255,255,255,.2)}
 
 <script>
 const { createApp } = Vue;
-const API_URL = (window.__ENV__?.API_URL || window.location.origin.replace(/:\d+/,'') + ':3001');
+const API_URL = window.location.origin;
 
 createApp({
   data() {
@@ -296,6 +431,8 @@ createApp({
       fila: [], locais: [], senhaAtual: null, localSelecionado: '',
       socket: null,
       admin: { setores: [], locais: [], usuarios: [] },
+      config: { clinica_nome: '', papel: '80mm', impressao: 'dialogo', salvo: false, logo_base64: '', tema: 'escuro', fundo_tipo: 'cor', fundo_valor: '#0a1628', clima_cidade: 'São Paulo', voz_sigla: false, voz_numero: false, voz_codigo: true, voz_setor: true, voz_local: true },
+      editando: { setor: null, local: null, usuario: null },
       novoSetor: { nome: '', prefixo: '', ordem: 0 },
       novoLocal: { nome: '' },
       novoUsuario: { nome: '', login: '', senha: '', perfil: 'atendente' },
@@ -315,6 +452,9 @@ createApp({
       });
       if (!r.ok) throw await r.json();
       return r.json();
+    },
+    abrirRelatorios() {
+      window.open('/relatorios/?token=' + this.token, '_blank');
     },
     async fazerLogin() {
       this.loginForm.carregando = true; this.loginForm.erro = '';
@@ -341,7 +481,7 @@ createApp({
       this.locais = await this.api(`/api/locais?unidade_id=${this.usuario.unidade_id}`);
     },
     conectarSocket() {
-      this.socket = io(API_URL);
+      this.socket = io();
       this.socket.emit('join:unidade', { unidade_id: this.usuario.unidade_id });
       this.socket.on('senha:criada',   () => this.carregarFila());
       this.socket.on('fila:atualizada',() => this.carregarFila());
@@ -420,6 +560,76 @@ createApp({
     async deletarLocal(id) {
       await this.api(`/api/locais/${id}`, { method:'DELETE' });
       this.carregarAdmin();
+    },
+    async carregarConfig() {
+      try {
+        const r = await this.api('/api/config?unidade_id=' + this.usuario.unidade_id);
+        if (r) {
+          this.config.clinica_nome = r.clinica_nome||'';
+          this.config.papel        = r.papel||'80mm';
+          this.config.impressao    = r.impressao||'dialogo';
+          this.config.logo_base64  = r.logo_base64||'';
+          this.config.tema         = r.tema||'escuro';
+          this.config.fundo_tipo   = r.fundo_tipo||'cor';
+          this.config.fundo_valor  = r.fundo_valor||'#0a1628';
+          this.config.clima_cidade = r.clima_cidade||'São Paulo';
+          const vo = (r.voz_opcoes||'codigo,setor,local').split(',');
+          this.config.voz_sigla  = vo.includes('sigla');
+          this.config.voz_numero = vo.includes('numero');
+          this.config.voz_codigo = vo.includes('codigo');
+          this.config.voz_setor  = vo.includes('setor');
+          this.config.voz_local  = vo.includes('local');
+        }
+      } catch(e) {}
+    },
+    carregarLogo(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => { this.config.logo_base64 = ev.target.result; };
+      reader.readAsDataURL(file);
+    },
+    async toggleSetor(s) {
+      await this.api('/api/setores/' + s.id, { method:'PUT', body: JSON.stringify({ nome: s.nome, prefixo: s.prefixo, ordem: s.ordem, ativo: s.ativo ? 0 : 1 }) });
+      s.ativo = s.ativo ? 0 : 1;
+    },
+    async salvarEdicaoSetor(s) {
+      await this.api('/api/setores/' + s.id, { method:'PUT', body: JSON.stringify({ nome: s.nome, prefixo: s.prefixo, ordem: s.ordem, ativo: s.ativo }) });
+      this.editando.setor = null;
+      this.carregarAdmin();
+    },
+    async toggleLocal(l) {
+      await this.api('/api/locais/' + l.id, { method:'PUT', body: JSON.stringify({ nome: l.nome, ativo: l.ativo ? 0 : 1 }) });
+      l.ativo = l.ativo ? 0 : 1;
+    },
+    async salvarEdicaoLocal(l) {
+      await this.api('/api/locais/' + l.id, { method:'PUT', body: JSON.stringify({ nome: l.nome, ativo: l.ativo }) });
+      this.editando.local = null;
+      this.carregarAdmin();
+    },
+    async toggleUsuario(u) {
+      await this.api('/api/usuarios/' + u.id, { method:'PUT', body: JSON.stringify({ nome: u.nome, perfil: u.perfil, ativo: u.ativo ? 0 : 1 }) });
+      u.ativo = u.ativo ? 0 : 1;
+    },
+    async salvarEdicaoUsuario(u) {
+      const body = { nome: u.nome, perfil: u.perfil, ativo: u.ativo };
+      if (u.nova_senha && u.nova_senha.trim()) body.senha = u.nova_senha;
+      await this.api('/api/usuarios/' + u.id, { method:'PUT', body: JSON.stringify(body) });
+      this.editando.usuario = null;
+      this.carregarAdmin();
+    },
+    async salvarConfig() {
+      await this.api('/api/config', { method:'POST', body: JSON.stringify({ unidade_id: this.usuario.unidade_id, clinica_nome: this.config.clinica_nome, papel: this.config.papel, impressao: this.config.impressao, logo_base64: this.config.logo_base64, tema: this.config.tema, fundo_tipo: this.config.fundo_tipo, fundo_valor: this.config.fundo_valor, clima_cidade: this.config.clima_cidade,
+          voz_opcoes: [
+            this.config.voz_sigla  ? 'sigla'  : '',
+            this.config.voz_numero ? 'numero' : '',
+            this.config.voz_codigo ? 'codigo' : '',
+            this.config.voz_setor  ? 'setor'  : '',
+            this.config.voz_local  ? 'local'  : '',
+          ].filter(Boolean).join(',')
+        }) });
+      this.config.salvo = true;
+      setTimeout(() => this.config.salvo = false, 3000);
     },
     async salvarUsuario() {
       await this.api('/api/usuarios', { method:'POST', body: JSON.stringify({ ...this.novoUsuario, unidade_id: this.usuario.unidade_id }) });
