@@ -36,4 +36,6 @@ module.exports = {
   prioridadeACada: Math.max(0, inteiro(process.env.PRIORIDADE_A_CADA, 0)),
   limiteSenhasPorMinuto: Math.max(1, inteiro(process.env.LIMITE_SENHAS_MINUTO, 30)),
   adminSenhaInicial: process.env.ADMIN_SENHA_INICIAL || '',
+  // Fecha sozinho as senhas que sobraram de dias anteriores (0 desliga)
+  fechamentoDiario: process.env.FECHAMENTO_DIARIO !== '0',
 };

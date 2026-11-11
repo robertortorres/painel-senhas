@@ -28,6 +28,7 @@ router.get('/dashboard', auth, perfil(...VEEM), async (req, res) => {
     SELECT COUNT(*) AS total,
       ${conta("s.status = 'concluido'")} AS concluidos,
       ${conta("s.status = 'cancelado'")} AS cancelados,
+      ${conta("s.status = 'nao_compareceu'")} AS nao_compareceu,
       ${conta("s.tipo = 'prioritario'")} AS prioritarios,
       ${MEDIA_ESPERA} AS avg_espera_seg,
       ${MEDIA_ATEND} AS avg_atend_seg
@@ -37,6 +38,7 @@ router.get('/dashboard', auth, perfil(...VEEM), async (req, res) => {
     SELECT st.nome AS setor, st.prefixo, COUNT(*) AS total,
       ${conta("s.status = 'concluido'")} AS concluidos,
       ${conta("s.status = 'cancelado'")} AS cancelados,
+      ${conta("s.status = 'nao_compareceu'")} AS nao_compareceu,
       ${conta("s.tipo = 'prioritario'")} AS prioritarios,
       ${MEDIA_ESPERA} AS avg_espera_seg,
       ${MEDIA_ATEND} AS avg_atend_seg
@@ -50,7 +52,8 @@ router.get('/dashboard', auth, perfil(...VEEM), async (req, res) => {
   const [por_dia] = await db.query(`
     SELECT DATE_FORMAT(s.criado_em, '%Y-%m-%d') AS dia, COUNT(*) AS total,
       ${conta("s.status = 'concluido'")} AS concluidos,
-      ${conta("s.status = 'cancelado'")} AS cancelados
+      ${conta("s.status = 'cancelado'")} AS cancelados,
+      ${conta("s.status = 'nao_compareceu'")} AS nao_compareceu
     FROM senhas s WHERE ${WHERE} GROUP BY dia ORDER BY dia`, params);
 
   const [por_atendente] = await db.query(`

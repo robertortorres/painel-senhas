@@ -144,7 +144,7 @@ tr:hover td{background:var(--surface2)}
         <div class="card-stat verde"><div class="lbl">Concluídos</div><div class="val">{{ d.totais.concluidos||0 }}</div><div class="sub">{{ pct(d.totais.concluidos,d.totais.total) }}% do total</div><div class="ic">✅</div></div>
         <div class="card-stat amber"><div class="lbl">Espera média</div><div class="val">{{ ft(d.totais.avg_espera_seg) }}</div><div class="sub">totem → chamada</div><div class="ic">⏱</div></div>
         <div class="card-stat roxo"><div class="lbl">Atend. médio</div><div class="val">{{ ft(d.totais.avg_atend_seg) }}</div><div class="sub">início → fim</div><div class="ic">🩺</div></div>
-        <div class="card-stat vermelho"><div class="lbl">Cancelados</div><div class="val">{{ d.totais.cancelados||0 }}</div><div class="sub">{{ pct(d.totais.cancelados,d.totais.total) }}% desistência</div><div class="ic">❌</div></div>
+        <div class="card-stat vermelho"><div class="lbl">Cancelados</div><div class="val">{{ d.totais.cancelados||0 }}</div><div class="sub">{{ pct(d.totais.cancelados,d.totais.total) }}% desistência<template v-if="d.totais.nao_compareceu"> · {{ d.totais.nao_compareceu }} não compareceram</template></div><div class="ic">❌</div></div>
         <div class="card-stat azul"><div class="lbl">Prioritários</div><div class="val">{{ d.totais.prioritarios||0 }}</div><div class="sub">{{ pct(d.totais.prioritarios,d.totais.total) }}% do total</div><div class="ic">⭐</div></div>
       </div>
 

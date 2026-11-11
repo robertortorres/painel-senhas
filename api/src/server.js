@@ -54,6 +54,7 @@ async function iniciar() {
   }
   await bootstrapAdmin();
   server.listen(config.port, () => console.log(`SGA API rodando na porta ${config.port}`));
+  require('./services/fechamento').agendarFechamento();
 }
 
 function encerrar(sinal) {

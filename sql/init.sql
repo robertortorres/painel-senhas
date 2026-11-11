@@ -60,7 +60,7 @@ CREATE TABLE senhas (
   prefixo VARCHAR(5) NOT NULL,
   codigo VARCHAR(10) GENERATED ALWAYS AS (CONCAT(prefixo, LPAD(numero,3,'0'))) STORED,
   tipo ENUM('normal','prioritario') DEFAULT 'normal',
-  status ENUM('aguardando','chamada','atendimento','concluido','cancelado') DEFAULT 'aguardando',
+  status ENUM('aguardando','chamada','atendimento','concluido','cancelado','nao_compareceu') DEFAULT 'aguardando',
   local_id INT,
   usuario_id INT,
   criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,

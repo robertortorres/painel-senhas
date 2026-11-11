@@ -77,6 +77,17 @@ pelo código. O botão **Chamar de novo** anuncia a senha no painel para o local
 (por exemplo, a recepção chamando de volta um paciente que já foi atendido). A senha continua finalizada:
 o atendimento não é reaberto e os tempos dos relatórios não mudam. Cada uso fica registrado no log da API.
 
+## Fechamento diário
+
+A numeração reinicia sozinha a cada dia, por setor. Senhas que sobraram de dias anteriores recebem um
+status final automaticamente (ao iniciar a API e a cada 10 minutos):
+
+- aguardando ou chamada → `nao_compareceu`
+- em atendimento → `concluido` (sem horário de conclusão, para não distorcer o tempo médio)
+
+Nos relatórios, as faltas aparecem no cartão de Cancelados. Para desligar, use `FECHAMENTO_DIARIO=0`.
+Requer a migração `sql/migrations/002_nao_compareceu.sql`.
+
 ## Painel TV
 
 O Chrome só permite falar depois de uma interação. Duas opções:
@@ -118,6 +129,7 @@ gravava em UTC: use `DB_TIMEZONE=+00:00` para manter os dados consistentes.
 | JWT_EXPIRES_IN        | Validade do token (padrão: 8h) |
 | ADMIN_SENHA_INICIAL   | Senha do `admin`, usada só com o banco sem usuários |
 | DB_TIMEZONE           | Fuso do banco (padrão: -03:00). Veja a seção acima |
+| FECHAMENTO_DIARIO     | 1 = fecha sozinho as senhas que sobraram de dias anteriores; 0 = desliga |
 | PRIORIDADE_A_CADA     | 0 = prioritário sempre primeiro; N = 1 prioritário a cada N normais |
 | LIMITE_SENHAS_MINUTO  | Senhas por minuto por IP no totem (padrão: 30) |
 | TRUST_PROXY           | Proxies na frente da API (nginx = 1; NPM + nginx = 2) |
