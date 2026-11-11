@@ -1,67 +1,71 @@
-require('dotenv').config();
-const express    = require('express');
-const http       = require('http');
-const cors       = require('cors');
+const config = require('./config');
+const express = require('express');
+const http = require('http');
 const { Server } = require('socket.io');
-const db         = require('./models/db');
-const redisClient= require('./services/redis');
-const setupSocket= require('./socket');
+const db = require('./models/db');
+const setupSocket = require('./socket');
+const bootstrapAdmin = require('./services/bootstrap');
+const { errorHandler } = require('./lib/http');
 
-const authRoutes    = require('./routes/auth');
-const unidadeRoutes = require('./routes/unidades');
-const setorRoutes   = require('./routes/setores');
-const localRoutes   = require('./routes/locais');
-const senhaRoutes   = require('./routes/senhas');
-const usuarioRoutes = require('./routes/usuarios');
-const relRoutes     = require('./routes/relatorios');
-const configRoutes  = require('./routes/config');
-
-const app    = express();
+const app = express();
 const server = http.createServer(app);
-const io     = new Server(server, {
-  cors: { origin: '*', methods: ['GET','POST','PUT','DELETE'] }
-});
+// Mesma origem via nginx: sem CORS. O cliente fica em /socket.io/socket.io.js
+const io = new Server(server);
 
-app.use(cors());
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.set('trust proxy', config.trustProxy);
+app.disable('x-powered-by');
+// A logo da clínica vai em base64 na config: limite maior só nessa rota
+app.use('/api/config', express.json({ limit: '3mb' }));
+app.use(express.json({ limit: '100kb' }));
 app.use((req, _res, next) => { req.io = io; next(); });
 
-app.use('/api/auth',       authRoutes);
-app.use('/api/unidades',   unidadeRoutes);
-app.use('/api/setores',    setorRoutes);
-app.use('/api/locais',     localRoutes);
-app.use('/api/senhas',     senhaRoutes);
-app.use('/api/usuarios',   usuarioRoutes);
-app.use('/api/relatorios', relRoutes);
-app.use('/api/config',     configRoutes);
-app.get('/api/health', (_req, res) => res.json({ ok: true }));
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/publico', require('./routes/publico'));
+app.use('/api/unidades', require('./routes/unidades'));
+app.use('/api/setores', require('./routes/setores'));
+app.use('/api/locais', require('./routes/locais'));
+app.use('/api/senhas', require('./routes/senhas'));
+app.use('/api/usuarios', require('./routes/usuarios'));
+app.use('/api/relatorios', require('./routes/relatorios'));
+app.use('/api/config', require('./routes/config'));
+
+app.get('/api/health', async (_req, res) => {
+  await db.query('SELECT 1');
+  res.json({ ok: true });
+});
+
+app.use('/api', (_req, res) => res.status(404).json({ erro: 'Rota não encontrada' }));
+app.use(errorHandler);
 
 setupSocket(io);
 
-async function aguardarMySQL(tentativas = 20, intervalo = 5000) {
-  for (let i = 1; i <= tentativas; i++) {
+const esperar = ms => new Promise(r => setTimeout(r, ms));
+
+async function iniciar() {
+  for (let tentativa = 1; ; tentativa++) {
     try {
       await db.query('SELECT 1');
-      console.log('MySQL conectado!');
-      return;
+      break;
     } catch (e) {
-      console.log('MySQL aguardando... tentativa ' + i + '/' + tentativas);
-      await new Promise(r => setTimeout(r, intervalo));
+      if (tentativa >= 30) throw e;
+      console.log(`Aguardando banco de dados (${tentativa}/30): ${e.code || e.message}`);
+      await esperar(2000);
     }
   }
-  throw new Error('MySQL indisponivel.');
+  await bootstrapAdmin();
+  server.listen(config.port, () => console.log(`SGA API rodando na porta ${config.port}`));
 }
 
-const PORT = process.env.PORT || 3001;
-server.listen(PORT, async () => {
-  console.log('SGA API rodando na porta ' + PORT);
-  try {
-    await aguardarMySQL();
-    await redisClient.ping();
-    console.log('Todos os servicos conectados. API pronta!');
-  } catch (e) {
-    console.error('Erro:', e.message);
-    process.exit(1);
-  }
+function encerrar(sinal) {
+  console.log(`${sinal} recebido, encerrando...`);
+  io.close();
+  server.close(() => db.end().finally(() => process.exit(0)));
+  setTimeout(() => process.exit(0), 5000).unref();
+}
+process.on('SIGTERM', () => encerrar('SIGTERM'));
+process.on('SIGINT', () => encerrar('SIGINT'));
+
+iniciar().catch(e => {
+  console.error('Falha ao iniciar:', e);
+  process.exit(1);
 });

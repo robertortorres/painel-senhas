@@ -5,87 +5,125 @@ Sistema de senhas para clínicas com atualização em tempo real via Socket.io.
 ## Estrutura
 
 ```
-sga/
+painel-senhas/
 ├── docker-compose.yml
-├── .env.example
+├── .env.example            ← copie para .env (nunca commite o .env)
 ├── sql/
-│   └── init.sql          ← schema + dados iniciais
-├── nginx/
-│   └── nginx.conf
-├── api/                  ← Backend Node.js + Express + Socket.io
-│   ├── Dockerfile
-│   ├── package.json
+│   ├── init.sql            ← schema + dados iniciais (só roda com volume vazio)
+│   └── migrations/         ← alterações para instalações existentes
+├── nginx/nginx.conf        ← proxy único: /, /painel/, /totem/, /api/, /socket.io/
+├── api/                    ← Node.js 22 + Express 5 + Socket.io
 │   └── src/
-│       ├── server.js
+│       ├── server.js, config.js
+│       ├── lib/http.js           ← erros e validação
 │       ├── models/db.js
-│       ├── services/redis.js
-│       ├── middleware/auth.js
+│       ├── middleware/auth.js    ← JWT + escopo por unidade
+│       ├── services/             ← regras de senha, bootstrap do admin
 │       ├── socket/index.js
-│       └── routes/
-│           ├── auth.js
-│           ├── senhas.js
-│           ├── setores.js
-│           ├── locais.js
-│           ├── unidades.js
-│           ├── usuarios.js
-│           └── relatorios.js
-├── painel/               ← Painel TV (HTML puro, Socket.io, TTS)
-│   ├── Dockerfile
-│   └── index.html
-├── totem/                ← Totem PWA (Web Bluetooth API)
-│   ├── Dockerfile
-│   └── index.html
-└── atendimento/          ← Atendimento + Admin (Vue.js)
-    ├── Dockerfile
-    └── index.html
+│       ├── scripts/reset-senha.js
+│       └── routes/               ← auth, publico, config, senhas, setores, locais, unidades, usuarios, relatorios
+├── painel/                 ← Painel TV (HTML puro, Socket.io, voz)
+├── totem/                  ← Totem (impressão pelo navegador)
+└── atendimento/            ← Atendimento + Admin (Vue 3)
 ```
 
-## Subir o sistema
+## Instalação nova
 
 ```bash
-cp .env.example .env
+cp .env.example .env && chmod 600 .env
+# preencha DB_PASS, MYSQL_ROOT_PASSWORD, JWT_SECRET e ADMIN_SENHA_INICIAL
 docker compose up -d --build
 ```
+
+Na primeira subida a API cria o usuário `admin` com a senha de `ADMIN_SENHA_INICIAL`.
+Troque a senha pelo módulo Administrativo depois do primeiro acesso.
+
+## Atualizando uma instalação existente
+
+1. Crie o `.env` com as senhas **atuais** do banco (o MySQL só aplica as variáveis na criação do volume).
+2. Aplique a migração uma única vez:
+   ```bash
+   docker compose exec -T mysqldb sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" clinicasga' < sql/migrations/001_melhorias.sql
+   ```
+3. Suba a nova versão e remova o Redis, que não é mais usado:
+   ```bash
+   docker compose up -d --build --remove-orphans
+   ```
+4. Redefina a senha do admin:
+   ```bash
+   docker compose exec api node src/scripts/reset-senha.js admin
+   ```
 
 ## Acessos
 
 | URL                            | Serviço              |
 |--------------------------------|----------------------|
-| http://SEU_IP/                 | Módulo Atendimento   |
-| http://SEU_IP/painel/          | Painel TV            |
-| http://SEU_IP/totem/           | Totem (tablet)       |
-| http://SEU_IP:8082             | phpMyAdmin           |
-| http://SEU_IP:9000             | Portainer            |
+| http://SEU_HOST/               | Módulo Atendimento   |
+| http://SEU_HOST/painel/?unidade=1 | Painel TV         |
+| http://SEU_HOST/totem/?unidade=1  | Totem (tablet)    |
+| http://SEU_HOST/relatorios/    | Relatórios (abre logado a partir do Atendimento) |
 
-## Login padrão
+Ferramentas administrativas ficam desligadas por padrão e, quando ligadas, só escutam no localhost do servidor:
 
-- **Usuário:** `admin`
-- **Senha:** `Admin@123`
-
-## Módulos por URL com parâmetro de unidade
-
-```
-/painel/?unidade=1
-/totem/?unidade=1
+```bash
+docker compose --profile admin up -d      # phpMyAdmin em 127.0.0.1:8082, Portainer em 127.0.0.1:9000
+ssh -L 8082:127.0.0.1:8082 usuario@servidor   # acesso pelo seu computador
 ```
 
-## Impressão Bluetooth (Totem)
+## Painel TV
 
-1. Ligar a impressora térmica BLE
-2. Android → Configurações → Bluetooth → Parear dispositivo
-3. Abrir o Totem no Chrome Android
-4. Após gerar a senha, tocar em "Imprimir comprovante"
-5. Na primeira vez, o Chrome mostra um diálogo para selecionar a impressora
-6. Nas próximas vezes, conecta automaticamente
+O Chrome só permite falar depois de uma interação. Duas opções:
 
-**Impressoras compatíveis:** Elgin i9 BT, Bematech MP-4200 TH, Epson TM-m30II, Datecs DPP-350 e qualquer modelo com GATT UUID 0xFF00 ou 0x18F0.
+- Abrir `/painel/?unidade=1` e tocar uma vez na tela ao ligar a TV.
+- Rodar em modo quiosque sem essa restrição e usar `?kiosk=1`:
+  ```
+  chromium --kiosk --autoplay-policy=no-user-gesture-required "https://SEU_HOST/painel/?unidade=1&kiosk=1"
+  ```
 
-## Variáveis de ambiente (api)
+O painel reconecta sozinho e, ao reconectar, recupera as últimas chamadas.
 
-| Variável         | Descrição                        |
-|------------------|----------------------------------|
-| DB_HOST          | Host do MySQL                    |
-| DB_PASS          | Senha do usuário sgaapp          |
-| REDIS_HOST       | Host do Redis                    |
-| JWT_SECRET       | Chave JWT (mínimo 32 caracteres) |
-| JWT_EXPIRES_IN   | Validade do token (padrão: 8h)   |
+## Totem e impressão
+
+O totem imprime o comprovante pelo diálogo de impressão do navegador. Tamanho do papel (58/80 mm)
+e modo (`dialogo`, `botao`, `sem`) ficam em Administrativo → Configurações.
+Para imprimir sem diálogo, rode o Chrome do totem com `--kiosk-printing`.
+
+## Fuso horário do banco
+
+A API usa `DB_TIMEZONE` (padrão `-03:00`) em cada conexão, para `NOW()`/`CURDATE()` e para
+converter datas. Ele precisa bater com o horário em que os dados antigos foram gravados.
+Confira antes do deploy:
+
+```bash
+docker exec sga-mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "SELECT @@system_time_zone, NOW(), UTC_TIMESTAMP()"'
+```
+
+Se `NOW()` estiver 3 horas antes do `UTC_TIMESTAMP()`, mantenha `-03:00`. Se forem iguais, o banco
+gravava em UTC: use `DB_TIMEZONE=+00:00` para manter os dados consistentes.
+
+## Variáveis de ambiente (.env)
+
+| Variável              | Descrição |
+|-----------------------|-----------|
+| DB_PASS               | Senha do usuário `sgaapp` do MySQL |
+| MYSQL_ROOT_PASSWORD   | Senha de root do MySQL |
+| JWT_SECRET            | Chave JWT (mínimo 32 caracteres; a API não sobe sem ela) |
+| JWT_EXPIRES_IN        | Validade do token (padrão: 8h) |
+| ADMIN_SENHA_INICIAL   | Senha do `admin`, usada só com o banco sem usuários |
+| DB_TIMEZONE           | Fuso do banco (padrão: -03:00). Veja a seção acima |
+| PRIORIDADE_A_CADA     | 0 = prioritário sempre primeiro; N = 1 prioritário a cada N normais |
+| LIMITE_SENHAS_MINUTO  | Senhas por minuto por IP no totem (padrão: 30) |
+| TRUST_PROXY           | Proxies na frente da API (nginx = 1; NPM + nginx = 2) |
+| HTTP_PORT             | Porta publicada do nginx (padrão: 80) |
+
+## Perfis
+
+| Perfil         | Pode |
+|----------------|------|
+| admin_global   | Tudo, em todas as unidades |
+| admin_unidade  | Atender e administrar setores, locais e usuários da própria unidade |
+| atendente / medico | Chamar e atender senhas da própria unidade |
+| relatorios     | Consultar relatórios da própria unidade |
+
+Só administradores alteram as Configurações. Relatórios ficam com `relatorios`, `admin_unidade` e `admin_global`
+(a lista está em `api/src/routes/relatorios.js`, constante `VEEM`).

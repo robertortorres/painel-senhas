@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AtendFlex — Painel</title>
-<script src="https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -143,7 +143,11 @@ video#bg-video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-
 
 <script>
 const API_URL    = window.location.origin;
-const UNIDADE_ID = parseInt(new URLSearchParams(location.search).get('unidade') || 1);
+const PARAMS     = new URLSearchParams(location.search);
+const UNIDADE_ID = parseInt(PARAMS.get('unidade') || 1);
+// ?kiosk=1: Chrome em modo quiosque com --autoplay-policy=no-user-gesture-required (som liga sozinho)
+const KIOSK      = PARAMS.has('kiosk');
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const MAX_HIST   = 8;
 const historico  = [];
 let layoutAtual  = 'h';
@@ -245,8 +249,22 @@ async function carregarClima(cidade) {
 }
 
 // ── SOCKET.IO ─────────────────────────────────────────────────────
-const socket = io(API_URL);
-socket.emit('join:unidade', { unidade_id: UNIDADE_ID });
+const socket = io();
+// Reentra na sala a cada (re)conexão e recupera as chamadas perdidas enquanto estava offline
+socket.on('connect', () => {
+  socket.emit('join:unidade', { unidade_id: UNIDADE_ID });
+  carregarUltimas();
+});
+async function carregarUltimas() {
+  try {
+    const r = await fetch(`${API_URL}/api/publico/chamadas?unidade_id=${UNIDADE_ID}&limite=${MAX_HIST}`);
+    if (!r.ok) return;
+    const lista = await r.json();
+    historico.splice(0, historico.length, ...lista);
+    renderHistorico();
+    if (lista[0]) mostrarSenha(lista[0]);
+  } catch(e) { console.error('Últimas chamadas:', e); }
+}
 socket.on('senha:chamada', senha => {
   mostrarSenha(senha);
   adicionarHistorico(senha);
@@ -269,12 +287,18 @@ function mostrarSenha(s) {
 }
 
 function adicionarHistorico(s) {
+  // Rechamada não duplica a senha no histórico
+  const i = historico.findIndex(h => h.id === s.id);
+  if (i >= 0) historico.splice(i, 1);
   historico.unshift(s);
   if (historico.length > MAX_HIST) historico.pop();
+  renderHistorico();
+}
+function renderHistorico() {
   document.getElementById('historico').innerHTML = historico.map(h =>
     `<div class="hist-item">
-      <span class="hist-cod${h.tipo==='prioritario'?' prio':''}">${h.codigo}</span>
-      <span class="hist-loc">${h.local_nome||''}</span>
+      <span class="hist-cod${h.tipo==='prioritario'?' prio':''}">${esc(h.codigo)}</span>
+      <span class="hist-loc">${esc(h.local_nome)}</span>
     </div>`
   ).join('');
 }
@@ -363,8 +387,8 @@ async function vocalizar(s) {
 
   // Parte da senha — sempre começa com "Senha"
   const parteSenha = [];
-  if (vo.includes('sigla'))  parteSenha.push(s.prefixo.split('').join(' '));
-  if (vo.includes('numero')) parteSenha.push(String(s.numero));
+  if (vo.includes('sigla') && s.prefixo)  parteSenha.push(String(s.prefixo).split('').join(' '));
+  if (vo.includes('numero') && s.numero) parteSenha.push(String(s.numero));
   if (vo.includes('codigo')) parteSenha.push(s.codigo.split('').join(' '));
 
   if (parteSenha.length > 0) partes.push('Senha ' + parteSenha.join(' '));
@@ -412,6 +436,7 @@ function toggleOrientacao() {
 
 // ── INIT ─────────────────────────────────────────────────────────
 carregarConfig();
+if (KIOSK) ativarSom();
 </script>
 </body>
 </html>

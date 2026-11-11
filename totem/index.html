@@ -143,7 +143,7 @@ let autoReset;
 async function carregarSetores() {
   try {
     const [rS, rC] = await Promise.all([
-      fetch(`${API_URL}/api/setores?unidade_id=${UNIDADE_ID}`),
+      fetch(`${API_URL}/api/publico/setores?unidade_id=${UNIDADE_ID}`),
       fetch(`${API_URL}/api/config?unidade_id=${UNIDADE_ID}`).catch(() => null)
     ]);
     if (!rS.ok) throw new Error('HTTP ' + rS.status);
@@ -162,24 +162,38 @@ async function carregarSetores() {
       }
     }
 
+    // Monta os botões via DOM: nomes com apóstrofo ou acento não quebram o clique
     const grid = document.getElementById('grid-setores');
-    grid.innerHTML = setores.map(s => `
-      <div class="btn-setor" onclick="selecionarSetor(${s.id},'${s.nome}','${s.prefixo}')">
-        <div class="prefixo">${s.prefixo}</div>
-        <div class="nome">${s.nome}</div>
-      </div>`).join('');
+    grid.replaceChildren(...setores.map(s => {
+      const btn = document.createElement('div');
+      btn.className = 'btn-setor';
+      const pre = document.createElement('div'); pre.className = 'prefixo'; pre.textContent = s.prefixo;
+      const nom = document.createElement('div'); nom.className = 'nome';    nom.textContent = s.nome;
+      btn.append(pre, nom);
+      btn.addEventListener('click', () => selecionarSetor(s.id, s.nome, s.prefixo));
+      return btn;
+    }));
   } catch(e) {
-    mostrarErro('Erro ao carregar setores. Verifique a conexão.');
+    mostrarErro('Erro ao carregar setores. Tentando novamente...');
+    setTimeout(() => carregarSetores().then(() => {
+      if (document.getElementById('grid-setores').children.length) reiniciar();
+    }), 10000);
   }
 }
 
 function selecionarSetor(id, nome, prefixo) {
   setorSelecionado = { id, nome, prefixo };
   mostrarTela('tela-tipo');
+  clearTimeout(autoReset);
+  autoReset = setTimeout(reiniciar, 30000);   // volta se a pessoa desistir
 }
-function voltarSetores() { mostrarTela('tela-setores'); }
+function voltarSetores() { reiniciar(); }
 
+let gerando = false;
 async function gerarSenha(tipo) {
+  if (gerando || !setorSelecionado) return;  // evita senha dupla com toque duplo
+  gerando = true;
+  clearTimeout(autoReset);
   mostrarTela('tela-aguarde');
   try {
     const r = await fetch(`${API_URL}/api/senhas`, {
@@ -187,8 +201,9 @@ async function gerarSenha(tipo) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ unidade_id: UNIDADE_ID, setor_id: setorSelecionado.id, tipo })
     });
-    if (!r.ok) throw new Error('Erro ' + r.status);
-    const { senha } = await r.json();
+    const corpo = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(corpo.erro || 'Erro ' + r.status);
+    const { senha } = corpo;
     ultimaSenha = senha;
 
     document.getElementById('suc-codigo').textContent = senha.codigo;
@@ -210,6 +225,10 @@ async function gerarSenha(tipo) {
     autoReset = setTimeout(reiniciar, 25000);
   } catch(e) {
     mostrarErro(e.message);
+    clearTimeout(autoReset);
+    autoReset = setTimeout(reiniciar, 15000);
+  } finally {
+    gerando = false;
   }
 }
 

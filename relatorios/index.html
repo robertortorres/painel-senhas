@@ -4,8 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AtendFlex — Relatórios</title>
-<script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<!-- Dependências servidas localmente: funciona mesmo sem internet -->
+<script src="/relatorios/vendor/vue.global.prod.js"></script>
+<script src="/relatorios/vendor/chart.umd.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
 :root{--bg:#f8f7f4;--surface:#fff;--surface2:#f1f0ed;--border:#e8e6e1;--text:#1a1917;--text2:#6b6860;--text3:#9b9890;--blue:#2563eb;--blue-light:#dbeafe;--green:#16a34a;--green-light:#dcfce7;--amber:#d97706;--amber-light:#fef3c7;--red:#dc2626;--red-light:#fee2e2;--purple:#7c3aed;--shadow-md:0 4px 12px rgba(0,0,0,.08)}
@@ -222,11 +223,13 @@ tr:hover td{background:var(--surface2)}
 const{createApp,nextTick}=Vue;
 const API=window.location.origin;
 let CH={};
+// Data local (AAAA-MM-DD). toISOString() usa UTC e vira o dia às 21h no Brasil
+const isoLocal=d=>{const z=new Date(d.getTime()-d.getTimezoneOffset()*60000);return z.toISOString().slice(0,10);};
 
 createApp({
   data(){
-    const h=new Date().toISOString().slice(0,10);
-    const i=new Date(new Date().setDate(1)).toISOString().slice(0,10);
+    const h=isoLocal(new Date());
+    const i=isoLocal(new Date(new Date().setDate(1)));
     return{
       usuario:null,token:null,
       lf:{login:'',senha:'',load:false,erro:''},
@@ -247,8 +250,10 @@ createApp({
   methods:{
     async req(path,opts={}){
       const r=await fetch(API+path,{...opts,headers:{'Content-Type':'application/json','Authorization':'Bearer '+this.token,...(opts.headers||{})}});
-      if(!r.ok)throw await r.json();
-      return r.json();
+      const corpo=await r.json().catch(()=>null);
+      if(r.status===401&&this.token){this.sair();this.lf.erro='Sessão expirada. Entre novamente.';}
+      if(!r.ok)throw Object.assign(new Error(corpo?.erro||('Erro '+r.status)),{erro:corpo?.erro||('Erro '+r.status),status:r.status});
+      return corpo;
     },
     async login(){
       this.lf.load=true;this.lf.erro='';
@@ -269,7 +274,7 @@ createApp({
     },
     limparFiltro(campo){this.f[campo]='';},
     range(t){
-      const d=new Date(),fmt=x=>x.toISOString().slice(0,10);
+      const d=new Date(),fmt=isoLocal;
       if(t==='hoje'){this.f.ini=this.f.fim=fmt(d);}
       else if(t==='semana'){const s=new Date(d);s.setDate(d.getDate()-6);this.f.ini=fmt(s);this.f.fim=fmt(d);}
       else if(t==='mes'){this.f.ini=fmt(new Date(d.getFullYear(),d.getMonth(),1));this.f.fim=fmt(d);}
@@ -285,8 +290,10 @@ createApp({
         if(this.f.local_id)   url+='&local_id='+this.f.local_id;
         if(this.f.usuario_id) url+='&usuario_id='+this.f.usuario_id;
         this.d=await this.req(url);
+        // Os <canvas> só existem com load=false (v-if): desliga antes de desenhar
+        this.load=false;
         await nextTick();this.charts();
-      }catch(e){console.error(e);}finally{this.load=false;}
+      }catch(e){console.error(e);if(e.status===403){this.lf.erro='Seu perfil não tem acesso aos relatórios.';this.sair();}}finally{this.load=false;}
     },
     charts(){
       const cores=['#2563eb','#16a34a','#d97706','#7c3aed','#dc2626','#0891b2'];
@@ -308,28 +315,25 @@ createApp({
     pct(v,t){if(!t)return 0;return Math.round((v||0)/t*100);},
   },
   async mounted(){
-    // SSO: token via URL
-    const params=new URLSearchParams(location.search);
-    const tkUrl=params.get('token');
-    if(tkUrl){
-      this.token=tkUrl;
+    // Token da URL (versão antiga do atendimento) é aceito uma vez e removido da barra de endereço
+    const tkUrl=new URLSearchParams(location.search).get('token');
+    if(tkUrl)history.replaceState({},'','/relatorios/');
+    // Mesma origem do atendimento: reaproveita o login de lá
+    const candidatos=[tkUrl,localStorage.getItem('sgarel_t'),localStorage.getItem('sga_token')].filter(Boolean);
+    for(const t of candidatos){
+      this.token=t;
       try{
-        const me=await this.req('/api/auth/login',{method:'POST',body:'{}',headers:{'Authorization':'Bearer '+tkUrl,'Content-Type':'application/json'}}).catch(()=>null);
-      }catch(e){}
-      // Decodificar JWT manualmente para pegar usuario
-      try{
-        const payload=JSON.parse(atob(tkUrl.split('.')[1]));
-        this.usuario={id:payload.id,nome:payload.login,perfil:payload.perfil,unidade_id:payload.unidade_id};
-        localStorage.setItem('sgarel_t',tkUrl);
+        // O servidor confirma o token e devolve o usuário atualizado
+        this.usuario=await this.req('/api/auth/me');
+        localStorage.setItem('sgarel_t',t);
         localStorage.setItem('sgarel_u',JSON.stringify(this.usuario));
-        history.replaceState({},'','/relatorios/');
+        this.lf.erro='';
         await this.carregarListas();
         this.buscar();
         return;
-      }catch(e){}
+      }catch(e){this.usuario=null;}
     }
-    const t=localStorage.getItem('sgarel_t'),u=localStorage.getItem('sgarel_u');
-    if(t&&u){this.token=t;this.usuario=JSON.parse(u);await this.carregarListas();this.buscar();}
+    this.token=null;
   }
 }).mount('#app');
 </script>

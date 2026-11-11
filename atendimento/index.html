@@ -4,8 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Atendimento — AtendFlex</title>
-<script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js"></script>
+<!-- Dependências servidas localmente: funciona mesmo sem internet -->
+<script src="/vendor/vue.global.prod.js"></script>
+<script src="/socket.io/socket.io.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#f1f5f9;font-family:'Segoe UI',sans-serif;min-height:100vh}
@@ -126,7 +127,7 @@ nav .nav-item.ativo{opacity:1;background:rgba(255,255,255,.2)}
         @click="aba='admin';carregarAdmin()">
         Administrativo
       </span>
-      <span class="nav-item" @click="abrirRelatorios" style="cursor:pointer">📊 Relatórios</span>
+      <span v-if="podeRelatorios" class="nav-item" @click="abrirRelatorios" style="cursor:pointer">📊 Relatórios</span>
       <span style="font-size:.85rem;opacity:.7">{{ usuario.nome }}</span>
       <span class="nav-item" @click="sair">Sair</span>
     </nav>
@@ -290,7 +291,7 @@ nav .nav-item.ativo{opacity:1;background:rgba(255,255,255,.2)}
                 <td>
                   <span v-if="editando.usuario!==u.id">{{ u.perfil }}</span>
                   <select v-else v-model="u.perfil">
-                    <option value="admin_global">Admin global</option>
+                    <option v-if="usuario.perfil==='admin_global'" value="admin_global">Admin global</option>
                     <option value="admin_unidade">Admin unidade</option>
                     <option value="atendente">Atendente</option>
                     <option value="medico">Médico</option>
@@ -422,7 +423,7 @@ nav .nav-item.ativo{opacity:1;background:rgba(255,255,255,.2)}
 const { createApp } = Vue;
 const API_URL = window.location.origin;
 
-createApp({
+const app = createApp({
   data() {
     return {
       usuario: null, token: null,
@@ -442,6 +443,7 @@ createApp({
     qtdAguardando() { return this.fila.filter(s => s.status === 'aguardando').length; },
     podeAtender()   { return ['atendente','medico','admin_unidade','admin_global'].includes(this.usuario?.perfil); },
     podeAdmin()     { return ['admin_unidade','admin_global'].includes(this.usuario?.perfil); },
+    podeRelatorios(){ return ['relatorios','admin_unidade','admin_global'].includes(this.usuario?.perfil); },
     filtraFila()    { return this.fila.filter(s => s.status === this.abaFila); },
   },
   methods: {
@@ -450,11 +452,20 @@ createApp({
         ...opts,
         headers: { 'Content-Type':'application/json', 'Authorization': 'Bearer '+this.token, ...opts.headers }
       });
-      if (!r.ok) throw await r.json();
-      return r.json();
+      const corpo = await r.json().catch(() => null);
+      if (r.status === 401 && this.token) {   // token expirado ou usuário desativado
+        this.sair();
+        this.loginForm.erro = 'Sessão expirada. Entre novamente.';
+      }
+      if (!r.ok) {
+        const msg = corpo?.erro || ('Erro ' + r.status);
+        throw Object.assign(new Error(msg), { erro: msg, status: r.status });
+      }
+      return corpo;
     },
     abrirRelatorios() {
-      window.open('/relatorios/?token=' + this.token, '_blank');
+      // Mesma origem: o módulo de relatórios lê o login daqui, sem token na URL
+      window.open('/relatorios/', '_blank');
     },
     async fazerLogin() {
       this.loginForm.carregando = true; this.loginForm.erro = '';
@@ -469,48 +480,66 @@ createApp({
         this.loginForm.erro = e.erro || 'Erro ao fazer login';
       } finally { this.loginForm.carregando = false; }
     },
-    iniciar() {
-      this.carregarFila();
-      this.carregarLocais();
+    async iniciar() {
+      try {
+        this.usuario = await this.api('/api/auth/me');   // valida o token salvo e atualiza o perfil
+        localStorage.setItem('sga_usuario', JSON.stringify(this.usuario));
+      } catch(e) { return; }
       this.conectarSocket();
+      if (this.podeAtender) {
+        this.carregarFila().catch(() => {});
+        this.carregarLocais().catch(() => {});
+        this.api('/api/senhas/atual').then(s => { this.senhaAtual = s; }).catch(() => {});
+      }
     },
     async carregarFila() {
       this.fila = await this.api(`/api/senhas/fila?unidade_id=${this.usuario.unidade_id}`);
+      if (this.senhaAtual) {
+        // concluída ou cancelada em outro lugar: some do card
+        const s = this.fila.find(f => f.id === this.senhaAtual.id);
+        this.senhaAtual = s || null;
+      }
     },
     async carregarLocais() {
       this.locais = await this.api(`/api/locais?unidade_id=${this.usuario.unidade_id}`);
     },
     conectarSocket() {
+      if (this.socket) this.socket.disconnect();
+      let timer = null;
+      const recarregar = () => {   // agrupa eventos seguidos em uma só requisição
+        clearTimeout(timer);
+        timer = setTimeout(() => this.podeAtender && this.carregarFila().catch(() => {}), 300);
+      };
       this.socket = io();
-      this.socket.emit('join:unidade', { unidade_id: this.usuario.unidade_id });
-      this.socket.on('senha:criada',   () => this.carregarFila());
-      this.socket.on('fila:atualizada',() => this.carregarFila());
+      // Reentra na sala a cada (re)conexão e recarrega o que mudou enquanto estava offline
+      this.socket.on('connect', () => {
+        this.socket.emit('join:unidade', { unidade_id: this.usuario.unidade_id });
+        recarregar();
+      });
+      this.socket.on('senha:criada',    recarregar);
+      this.socket.on('fila:atualizada', recarregar);
     },
     async chamarProxima() {
-      const prox = this.fila.find(s => s.status === 'aguardando');
-      if (!prox) return;
-      await this.chamarSenha(prox);
+      if (!this.localSelecionado) return alert('Selecione o local de atendimento');
+      // O servidor escolhe a próxima senha: dois atendentes nunca pegam a mesma
+      this.senhaAtual = await this.api('/api/senhas/proxima', {
+        method:'POST', body: JSON.stringify({ local_id: this.localSelecionado })
+      });
+      this.carregarFila();
     },
     async chamarSenha(s) {
       if (!this.localSelecionado) return alert('Selecione o local de atendimento');
-      const local = this.locais.find(l => l.id == this.localSelecionado);
-      await this.api(`/api/senhas/${s.id}/chamar`, {
-        method:'POST', body: JSON.stringify({ local_id: this.localSelecionado, unidade_id: this.usuario.unidade_id, local_nome: local?.nome })
+      this.senhaAtual = await this.api(`/api/senhas/${s.id}/chamar`, {
+        method:'POST', body: JSON.stringify({ local_id: this.localSelecionado })
       });
-      this.senhaAtual = { ...s, status:'chamada', local_id: this.localSelecionado, local_nome: local?.nome };
       this.carregarFila();
     },
     async chamarNovamente() {
       if (!this.senhaAtual) return;
-      await this.api(`/api/senhas/${this.senhaAtual.id}/chamar`, {
-        method:'POST', body: JSON.stringify({ local_id: this.localSelecionado, unidade_id: this.usuario.unidade_id })
-      });
+      await this.api(`/api/senhas/${this.senhaAtual.id}/rechamar`, { method:'POST' });
     },
     async iniciarAtendimento() {
-      await this.api(`/api/senhas/${this.senhaAtual.id}/atender`, {
-        method:'POST', body: JSON.stringify({ unidade_id: this.usuario.unidade_id })
-      });
-      this.senhaAtual.status = 'atendimento';
+      this.senhaAtual = await this.api(`/api/senhas/${this.senhaAtual.id}/atender`, { method:'POST' });
     },
     async concluirAtendimento() {
       await this.api(`/api/senhas/${this.senhaAtual.id}/concluir`, {
@@ -532,8 +561,8 @@ createApp({
     },
     sair() {
       localStorage.removeItem('sga_token'); localStorage.removeItem('sga_usuario');
-      this.usuario = null; this.token = null;
-      if (this.socket) this.socket.disconnect();
+      if (this.socket) { this.socket.disconnect(); this.socket = null; }
+      this.usuario = null; this.token = null; this.senhaAtual = null; this.fila = [];
     },
     async carregarAdmin() {
       const uid = this.usuario.unidade_id;
@@ -638,11 +667,22 @@ createApp({
     },
   },
   mounted() {
+    setInterval(() => { this.fila = [...this.fila]; }, 30000);   // atualiza o "há X min"
     const t = localStorage.getItem('sga_token');
     const u = localStorage.getItem('sga_usuario');
-    if (t && u) { this.token = t; this.usuario = JSON.parse(u); this.iniciar(); }
+    if (t && u) {
+      this.token = t;
+      try { this.usuario = JSON.parse(u); } catch(e) { this.sair(); return; }
+      this.iniciar();
+    }
   }
-}).mount('#app');
+});
+// Erros das ações (botões) viram aviso na tela em vez de falhar em silêncio
+app.config.errorHandler = (err) => {
+  console.error(err);
+  if (err && err.status !== 401) alert(err.erro || err.message || 'Erro inesperado');
+};
+app.mount('#app');
 </script>
 </body>
 </html>
