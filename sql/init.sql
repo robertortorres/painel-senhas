@@ -1,5 +1,7 @@
+SET NAMES utf8mb4;
 CREATE DATABASE IF NOT EXISTS clinicasga CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE clinicasga;
+SET time_zone = '-03:00';
 
 CREATE TABLE unidades (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -62,8 +64,13 @@ CREATE TABLE senhas (
   local_id INT,
   usuario_id INT,
   criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
-  chamado_em DATETIME,
+  chamado_em DATETIME(3),
   concluido_em DATETIME,
+  criado_dia DATE GENERATED ALWAYS AS (DATE(criado_em)) STORED,
+  UNIQUE KEY uk_senha_dia (unidade_id, setor_id, criado_dia, numero),
+  KEY idx_fila (unidade_id, status, criado_em),
+  KEY idx_chamado (unidade_id, chamado_em),
+  KEY idx_usuario (usuario_id, status),
   FOREIGN KEY (unidade_id) REFERENCES unidades(id),
   FOREIGN KEY (setor_id) REFERENCES setores(id),
   FOREIGN KEY (local_id) REFERENCES locais(id),
@@ -92,6 +99,5 @@ INSERT INTO locais (unidade_id, nome) VALUES
   (1, 'Guichê 02'),
   (1, 'Consultório 01');
 
--- senha: Admin@123
-INSERT INTO usuarios (unidade_id, nome, login, senha_hash, perfil) VALUES
-  (1, 'Administrador', 'admin', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin_global');
+-- O usuário admin NÃO é criado aqui: a API cria na primeira subida
+-- usando a variável ADMIN_SENHA_INICIAL do .env.
